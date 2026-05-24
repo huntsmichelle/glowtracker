@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem C:\\\\GlowLoop -Recurse -File | Where-Object { $_.FullName -notmatch 'node_modules|\\\\.next' } | Select-Object -ExpandProperty FullName | Sort-Object)",
+      "PowerShell(cd C:\\\\GlowLoop; $env:NEXT_PUBLIC_SUPABASE_URL=\"https://placeholder.supabase.co\"; $env:NEXT_PUBLIC_SUPABASE_ANON_KEY=\"placeholder\"; npx next build 2>&1 | Select-Object -Last 30)",
+      "PowerShell(Copy-Item *)",
+      "PowerShell(cd C:\\\\GlowLoop; $env:NEXT_PUBLIC_SUPABASE_URL=\"https://placeholder.supabase.co\"; $env:NEXT_PUBLIC_SUPABASE_ANON_KEY=\"placeholder\"; npx next build 2>&1 | Select-Object -Last 20)"
+    ]
+  }
+}
