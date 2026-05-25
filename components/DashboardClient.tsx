@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { format, parseISO, differenceInDays } from 'date-fns';
+import { format, parseISO, differenceInDays, addDays } from 'date-fns';
 import { createClient } from '@/lib/supabase/client';
 import {
   completeInstance,
@@ -26,6 +26,11 @@ type SpendingEntry = {
   actual_completion_date: string;
   cost: number;
   task: { id: string; name: string; category: { name: string; color: string } | null } | null;
+};
+
+type PlannedEntry = {
+  due_date_start: string;
+  task: { id: string; name: string; default_cost: number | null; category: { name: string; color: string } | null } | null;
 };
 
 // ─── DashboardClient ──────────────────────────────────────────────────────────
@@ -64,6 +69,7 @@ export default function DashboardClient({ instances: initial }: Props) {
       .select('*, task:tasks(*, category:categories(*))')
       .gte('due_date_start', firstDay)
       .lte('due_date_start', lastDay)
+      .neq('status', 'skipped')
       .order('due_date_start', { ascending: true });
     setCalInstances((data as InstanceWithTask[]) ?? []);
     setCalLoading(false);
@@ -85,24 +91,38 @@ export default function DashboardClient({ instances: initial }: Props) {
   }
 
   // ── Spending state ─────────────────────────────────────────────────────────
-  const [spendingOpen, setSpendingOpen]   = useState(false);
-  const [spendingData, setSpendingData]   = useState<SpendingEntry[] | null>(null);
+  const [spendingOpen, setSpendingOpen]     = useState(false);
+  const [spendingData, setSpendingData]     = useState<SpendingEntry[] | null>(null);
+  const [plannedData, setPlannedData]       = useState<PlannedEntry[] | null>(null);
   const [spendingLoading, setSpendingLoading] = useState(false);
 
   async function fetchSpending() {
     setSpendingLoading(true);
     const supabase = createClient();
+
+    // Spent: completed instances with a logged cost (past 6 months)
     const cutoff = new Date();
     cutoff.setMonth(cutoff.getMonth() - 6);
-    const sixMonthsAgo = format(cutoff, 'yyyy-MM-dd');
-    const { data } = await supabase
+    const { data: spent } = await supabase
       .from('instances')
       .select('actual_completion_date, cost, task:tasks(id, name, category:categories(name, color))')
       .eq('status', 'completed')
       .not('cost', 'is', null)
-      .gte('actual_completion_date', sixMonthsAgo)
+      .gte('actual_completion_date', format(cutoff, 'yyyy-MM-dd'))
       .order('actual_completion_date', { ascending: false });
-    setSpendingData((data as unknown as SpendingEntry[]) ?? []);
+
+    // Planned: upcoming + projected instances with a task default_cost (next 6 months)
+    const { data: planned } = await supabase
+      .from('instances')
+      .select('due_date_start, task:tasks(id, name, default_cost, category:categories(name, color))')
+      .neq('status', 'completed')
+      .neq('status', 'skipped')
+      .neq('status', 'snoozed')
+      .gte('due_date_start', format(today(), 'yyyy-MM-dd'))
+      .lte('due_date_start', format(addDays(today(), 182), 'yyyy-MM-dd'));
+
+    setSpendingData((spent as unknown as SpendingEntry[]) ?? []);
+    setPlannedData((planned as unknown as PlannedEntry[]) ?? []);
     setSpendingLoading(false);
   }
 
@@ -121,6 +141,7 @@ export default function DashboardClient({ instances: initial }: Props) {
   const [adjustModal, setAdjustModal]               = useState<{ instance: InstanceWithTask } | null>(null);
   const [deleteModal, setDeleteModal] = useState<{ instance: InstanceWithTask } | null>(null);
 
+  const [completionDateMode, setCompletionDateMode] = useState<'scheduled' | 'custom'>('scheduled');
   const [completionDate, setCompletionDate] = useState(format(today(), 'yyyy-MM-dd'));
   const [completionCost, setCompletionCost] = useState('');
   const [snoozeDays, setSnoozeDays]         = useState(3);
@@ -134,6 +155,7 @@ export default function DashboardClient({ instances: initial }: Props) {
   const [overrideNextDate, setOverrideNextDate] = useState('');
 
   function openCompleteModal(instance: InstanceWithTask) {
+    setCompletionDateMode('scheduled');
     setCompletionDate(format(today(), 'yyyy-MM-dd'));
     setCompletionCost(instance.task?.default_cost != null ? String(instance.task.default_cost) : '');
     setCompleteModal({ instance });
@@ -152,18 +174,32 @@ export default function DashboardClient({ instances: initial }: Props) {
 
   async function handleComplete(instance: InstanceWithTask) {
     setLoading(instance.id);
-    const date = new Date(completionDate + 'T00:00:00');
+    const date = completionDateMode === 'scheduled'
+      ? parseISO(instance.due_date_start)
+      : new Date(completionDate + 'T00:00:00');
     const cost = completionCost !== '' ? Number(completionCost) : null;
-    await completeInstance(instance.id, instance.task as Task, date, cost);
+    const { next } = await completeInstance(instance.id, instance.task as Task, date, cost);
     removeInstance(instance.id);
+    if (next) {
+      setInstances(prev =>
+        [...prev, { ...next, task: instance.task } as InstanceWithTask]
+          .sort((a, b) => a.due_date_start.localeCompare(b.due_date_start))
+      );
+    }
     setCompleteModal(null);
     setLoading(null);
   }
 
   async function handleSkip(instance: InstanceWithTask) {
     setLoading(instance.id);
-    await skipInstance(instance.id, instance.task as Task);
+    const { next } = await skipInstance(instance.id, instance.task as Task);
     removeInstance(instance.id);
+    if (next) {
+      setInstances(prev =>
+        [...prev, { ...next, task: instance.task } as InstanceWithTask]
+          .sort((a, b) => a.due_date_start.localeCompare(b.due_date_start))
+      );
+    }
     setLoading(null);
   }
 
@@ -409,16 +445,26 @@ export default function DashboardClient({ instances: initial }: Props) {
                 >
                   <p className={`text-xs text-center mb-0.5 ${isToday ? 'font-bold text-pink-600' : 'text-gray-400'}`}>{day}</p>
                   <div className="space-y-0.5">
-                    {dayInsts.slice(0, 3).map(inst => (
-                      <Link key={inst.id} href={`/instances/${inst.id}`} onClick={e => e.stopPropagation()}>
-                        <div
-                          className="text-[10px] leading-tight px-1 py-0.5 rounded truncate text-white"
-                          style={{ backgroundColor: inst.task?.category?.color ?? '#6B7280' }}
-                        >
-                          {inst.task?.name ?? '—'}
-                        </div>
-                      </Link>
-                    ))}
+                    {dayInsts.slice(0, 3).map(inst => {
+                      const isProjected = inst.is_projected;
+                      const isCompleted = inst.status === 'completed';
+                      return (
+                        <Link key={inst.id} href={`/instances/${inst.id}`} onClick={e => e.stopPropagation()}>
+                          <div
+                            className={`text-[10px] leading-tight px-1 py-0.5 rounded truncate text-white ${
+                              isProjected
+                                ? 'opacity-35 border border-dashed border-white/50'
+                                : isCompleted
+                                  ? 'opacity-60'
+                                  : ''
+                            }`}
+                            style={{ backgroundColor: inst.task?.category?.color ?? '#6B7280' }}
+                          >
+                            {isCompleted ? '✓ ' : ''}{inst.task?.name ?? '—'}
+                          </div>
+                        </Link>
+                      );
+                    })}
                     {dayInsts.length > 3 && (
                       <p className="text-[10px] text-gray-400 text-center">+{dayInsts.length - 3}</p>
                     )}
@@ -435,38 +481,71 @@ export default function DashboardClient({ instances: initial }: Props) {
   function SpendingSection() {
     const thisMonthStr = format(today(), 'yyyy-MM');
     const entries      = spendingData ?? [];
+    const planned      = plannedData ?? [];
 
-    const thisMonthEntries = entries.filter(e => e.actual_completion_date.startsWith(thisMonthStr));
-    const thisMonthTotal   = thisMonthEntries.reduce((s, e) => s + e.cost, 0);
+    // ── Spent (completed) ──────────────────────────────────────
+    const thisMonthSpent = entries
+      .filter(e => e.actual_completion_date.startsWith(thisMonthStr))
+      .reduce((s, e) => s + e.cost, 0);
 
-    // Monthly totals for last 6 months
-    const months: string[] = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date();
-      d.setMonth(d.getMonth() - i);
-      months.push(format(d, 'yyyy-MM'));
+    // ── Planned (upcoming + projected, tasks with a default_cost) ──
+    function plannedForMonth(monthStr: string) {
+      return planned
+        .filter(p => p.due_date_start.startsWith(monthStr) && p.task?.default_cost != null)
+        .reduce((s, p) => s + (p.task!.default_cost as number), 0);
     }
-    const monthlyTotals = months.map(m => ({
-      label: new Date(m + '-01').toLocaleString('default', { month: 'short' }),
-      total: entries.filter(e => e.actual_completion_date.startsWith(m)).reduce((s, e) => s + e.cost, 0),
-    }));
-    const maxMonthly = Math.max(...monthlyTotals.map(m => m.total), 1);
-    const monthlyAvg = monthlyTotals.filter(m => m.total > 0).length > 0
-      ? monthlyTotals.reduce((s, m) => s + m.total, 0) / monthlyTotals.filter(m => m.total > 0).length
+    const thisMonthPlanned = plannedForMonth(thisMonthStr);
+
+    // ── 7-month bar chart: 3 past + current + 3 future ────────
+    const barMonths: string[] = [];
+    for (let i = -3; i <= 3; i++) {
+      const d = new Date();
+      d.setDate(1);
+      d.setMonth(d.getMonth() + i);
+      barMonths.push(format(d, 'yyyy-MM'));
+    }
+    const barData = barMonths.map(m => {
+      const isPast    = m < thisMonthStr;
+      const isCurrent = m === thisMonthStr;
+      const spent     = entries
+        .filter(e => e.actual_completion_date.startsWith(m))
+        .reduce((s, e) => s + e.cost, 0);
+      const plan      = !isPast ? plannedForMonth(m) : 0;
+      return {
+        label: new Date(m + '-01').toLocaleString('default', { month: 'short' }),
+        spent,
+        planned: plan,
+        isPast,
+        isCurrent,
+        total: spent + plan,
+      };
+    });
+    const maxBar = Math.max(...barData.map(m => m.total), 1);
+
+    // ── Monthly avg (spent only, past months with data) ────────
+    const pastWithSpend = barData.filter(m => m.isPast && m.spent > 0);
+    const monthlyAvg = pastWithSpend.length > 0
+      ? pastWithSpend.reduce((s, m) => s + m.spent, 0) / pastWithSpend.length
       : 0;
 
-    // By category this month
-    const catMap: Record<string, { name: string; color: string; total: number }> = {};
-    for (const e of thisMonthEntries) {
+    // ── By category (this month, spent + planned) ──────────────
+    const catMap: Record<string, { name: string; color: string; spent: number; planned: number }> = {};
+    for (const e of entries.filter(e => e.actual_completion_date.startsWith(thisMonthStr))) {
       const name  = e.task?.category?.name  ?? 'Other';
       const color = e.task?.category?.color ?? '#6B7280';
-      if (!catMap[name]) catMap[name] = { name, color, total: 0 };
-      catMap[name].total += e.cost;
+      if (!catMap[name]) catMap[name] = { name, color, spent: 0, planned: 0 };
+      catMap[name].spent += e.cost;
     }
-    const catList = Object.values(catMap).sort((a, b) => b.total - a.total);
-    const maxCat  = Math.max(...catList.map(c => c.total), 1);
+    for (const p of planned.filter(p => p.due_date_start.startsWith(thisMonthStr) && p.task?.default_cost != null)) {
+      const name  = p.task?.category?.name  ?? 'Other';
+      const color = p.task?.category?.color ?? '#6B7280';
+      if (!catMap[name]) catMap[name] = { name, color, spent: 0, planned: 0 };
+      catMap[name].planned += p.task!.default_cost as number;
+    }
+    const catList = Object.values(catMap).sort((a, b) => (b.spent + b.planned) - (a.spent + a.planned));
+    const maxCat  = Math.max(...catList.map(c => c.spent + c.planned), 1);
 
-    // Top 5 tasks by total spend
+    // ── Top 5 tasks by total spend (completed only) ────────────
     const taskMap: Record<string, { name: string; total: number }> = {};
     for (const e of entries) {
       const id   = e.task?.id ?? 'unknown';
@@ -475,6 +554,8 @@ export default function DashboardClient({ instances: initial }: Props) {
       taskMap[id].total += e.cost;
     }
     const top5 = Object.values(taskMap).sort((a, b) => b.total - a.total).slice(0, 5);
+
+    const hasAnyData = entries.length > 0 || planned.length > 0;
 
     return (
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -490,7 +571,7 @@ export default function DashboardClient({ instances: initial }: Props) {
           <div className="px-5 pb-5 border-t border-gray-100 space-y-5 pt-4">
             {spendingLoading ? (
               <p className="text-sm text-gray-400 text-center py-4">Loading…</p>
-            ) : entries.length === 0 ? (
+            ) : !hasAnyData ? (
               <p className="text-sm text-gray-400 text-center py-4">
                 No cost data yet. Add a typical cost to your tasks, then log it when completing.
               </p>
@@ -500,15 +581,18 @@ export default function DashboardClient({ instances: initial }: Props) {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-pink-50 rounded-xl p-3">
                     <p className="text-xs text-gray-400 mb-0.5">This month</p>
-                    <p className="text-xl font-bold text-gray-800">${thisMonthTotal.toFixed(2)}</p>
+                    <p className="text-xl font-bold text-gray-800">${thisMonthSpent.toFixed(2)}</p>
+                    {thisMonthPlanned > 0 && (
+                      <p className="text-xs text-purple-500 mt-0.5">+${thisMonthPlanned.toFixed(2)} planned</p>
+                    )}
                   </div>
                   <div className="bg-gray-50 rounded-xl p-3">
-                    <p className="text-xs text-gray-400 mb-0.5">Monthly avg</p>
+                    <p className="text-xs text-gray-400 mb-0.5">Monthly avg (spent)</p>
                     <p className="text-xl font-bold text-gray-800">${monthlyAvg.toFixed(2)}</p>
                   </div>
                 </div>
 
-                {/* By category */}
+                {/* By category (this month) */}
                 {catList.length > 0 && (
                   <div>
                     <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">This month by category</p>
@@ -516,36 +600,81 @@ export default function DashboardClient({ instances: initial }: Props) {
                       {catList.map(cat => (
                         <div key={cat.name} className="flex items-center gap-2">
                           <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />
-                          <span className="text-xs text-gray-600 w-24 truncate">{cat.name}</span>
-                          <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                          <span className="text-xs text-gray-600 w-20 truncate">{cat.name}</span>
+                          <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden flex">
+                            {/* Spent portion */}
                             <div
-                              className="h-full rounded-full"
-                              style={{ width: `${(cat.total / maxCat) * 100}%`, backgroundColor: cat.color }}
+                              className="h-full rounded-l-full"
+                              style={{ width: `${(cat.spent / maxCat) * 100}%`, backgroundColor: cat.color }}
+                            />
+                            {/* Planned portion */}
+                            <div
+                              className="h-full rounded-r-full opacity-30"
+                              style={{ width: `${(cat.planned / maxCat) * 100}%`, backgroundColor: cat.color }}
                             />
                           </div>
-                          <span className="text-xs text-gray-500 w-12 text-right">${cat.total.toFixed(0)}</span>
+                          <span className="text-xs text-gray-500 w-14 text-right">
+                            ${cat.spent.toFixed(0)}
+                            {cat.planned > 0 && <span className="text-purple-400">+{cat.planned.toFixed(0)}</span>}
+                          </span>
                         </div>
                       ))}
                     </div>
+                    <p className="text-[10px] text-gray-400 mt-1.5">Solid = spent · Faded = planned</p>
                   </div>
                 )}
 
-                {/* 6-month bar chart */}
+                {/* 7-month bar chart (3 past + current + 3 future) */}
                 <div>
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Last 6 months</p>
-                  <div className="flex items-end gap-1 h-16">
-                    {monthlyTotals.map(m => (
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+                    Spent &amp; planned (7 months)
+                  </p>
+                  <div className="flex items-end gap-1 h-20">
+                    {barData.map(m => (
                       <div key={m.label} className="flex-1 flex flex-col items-center gap-0.5">
-                        <span className="text-[10px] text-gray-400">{m.total > 0 ? `$${m.total.toFixed(0)}` : ''}</span>
-                        <div className="w-full rounded-t" style={{
-                          height: `${(m.total / maxMonthly) * 40}px`,
-                          minHeight: m.total > 0 ? '4px' : '0',
-                          backgroundColor: '#EC4899',
-                          opacity: m.label === format(today(), 'MMM') ? 1 : 0.5,
-                        }} />
-                        <span className="text-[10px] text-gray-400">{m.label}</span>
+                        <span className="text-[9px] text-gray-400 text-center leading-tight">
+                          {m.total > 0 ? `$${m.total.toFixed(0)}` : ''}
+                        </span>
+                        <div className="w-full flex flex-col justify-end" style={{ height: '48px' }}>
+                          {/* Planned on top (lighter) */}
+                          {m.planned > 0 && (
+                            <div
+                              className="w-full rounded-t"
+                              style={{
+                                height: `${(m.planned / maxBar) * 48}px`,
+                                minHeight: '3px',
+                                backgroundColor: m.isCurrent ? '#A855F7' : '#EC4899',
+                                opacity: 0.25,
+                              }}
+                            />
+                          )}
+                          {/* Spent (solid) */}
+                          {m.spent > 0 && (
+                            <div
+                              className="w-full"
+                              style={{
+                                height: `${(m.spent / maxBar) * 48}px`,
+                                minHeight: '3px',
+                                backgroundColor: '#EC4899',
+                                opacity: m.isPast ? 0.5 : 1,
+                                borderRadius: m.planned > 0 ? '0' : '2px 2px 0 0',
+                              }}
+                            />
+                          )}
+                        </div>
+                        <span className={`text-[9px] ${m.isCurrent ? 'font-bold text-pink-500' : 'text-gray-400'}`}>
+                          {m.label}
+                        </span>
                       </div>
                     ))}
+                  </div>
+                  <div className="flex items-center gap-3 mt-1.5">
+                    <span className="flex items-center gap-1 text-[10px] text-gray-400">
+                      <span className="w-2.5 h-2.5 rounded-sm bg-pink-500 inline-block" /> Spent
+                    </span>
+                    <span className="flex items-center gap-1 text-[10px] text-gray-400">
+                      <span className="w-2.5 h-2.5 rounded-sm bg-pink-300 opacity-50 inline-block" /> Planned
+                    </span>
                   </div>
                 </div>
 
@@ -580,15 +709,48 @@ export default function DashboardClient({ instances: initial }: Props) {
     const { instance } = completeModal;
     return (
       <Modal onClose={() => setCompleteModal(null)}>
-        <h3 className="font-semibold text-gray-800 mb-1">Log completion</h3>
+        <h3 className="font-semibold text-gray-800 mb-1">Mark complete</h3>
         <p className="text-sm text-gray-500 mb-4">{instance.task?.name}</p>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Actual date</label>
-        <input
-          type="date" value={completionDate} max={format(today(), 'yyyy-MM-dd')}
-          onChange={e => setCompletionDate(e.target.value)}
-          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3"
-        />
-        <label className="block text-sm font-medium text-gray-700 mb-1">Cost ($)</label>
+
+        <p className="text-sm font-medium text-gray-700 mb-2">When did you do this?</p>
+        <div className="flex gap-2 mb-3">
+          <button
+            type="button"
+            onClick={() => setCompletionDateMode('scheduled')}
+            className={`flex-1 rounded-lg px-3 py-2.5 text-sm border transition-colors text-left ${
+              completionDateMode === 'scheduled'
+                ? 'bg-green-500 border-green-500 text-white'
+                : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            <span className="block font-medium">Scheduled date</span>
+            <span className="block text-xs opacity-75 mt-0.5">
+              {format(parseISO(instance.due_date_start), 'MMM d')}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setCompletionDateMode('custom')}
+            className={`flex-1 rounded-lg px-3 py-2.5 text-sm border transition-colors text-left ${
+              completionDateMode === 'custom'
+                ? 'bg-green-500 border-green-500 text-white'
+                : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            <span className="block font-medium">Different date</span>
+            <span className="block text-xs opacity-75 mt-0.5">Pick a date</span>
+          </button>
+        </div>
+
+        {completionDateMode === 'custom' && (
+          <input
+            type="date" value={completionDate} max={format(today(), 'yyyy-MM-dd')}
+            onChange={e => setCompletionDate(e.target.value)}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3"
+          />
+        )}
+
+        <label className="block text-sm font-medium text-gray-700 mb-1">Cost (optional)</label>
         <div className="relative mb-4">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
           <input
@@ -605,7 +767,7 @@ export default function DashboardClient({ instances: initial }: Props) {
             disabled={loading === instance.id}
             className="flex-1 bg-green-500 text-white text-sm font-medium rounded-lg py-2 disabled:opacity-50"
           >
-            {loading === instance.id ? 'Saving…' : 'Mark complete'}
+            {loading === instance.id ? 'Saving…' : 'Done'}
           </button>
         </div>
       </Modal>

@@ -22,6 +22,7 @@ export default async function DashboardPage() {
     `)
     .eq('user_id', user.id)
     .in('status', ['upcoming', 'due', 'snoozed'])
+    .eq('is_projected', false)
     .order('due_date_start', { ascending: true });
 
   return <DashboardClient instances={(instances as InstanceWithTask[]) ?? []} />;

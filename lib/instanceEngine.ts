@@ -4,39 +4,44 @@
  * All scheduling logic lives here. Two modes are supported:
  *
  * STANDARD MODE (mode = 'standard')
- *   Instances are generated one at a time, each anchored to the
- *   completion date of the previous instance. The task grows
- *   forward indefinitely.
+ *   One "upcoming" instance exists at a time — the next actionable date.
+ *   Beyond that, projected instances are pre-generated for 6 months using
+ *   the midpoint interval as the cadence. Lifecycle:
+ *
+ *   CREATE  → createFirstInstance() makes the upcoming instance, then
+ *             generateProjectedInstances() fills out 6 months of forecasts.
+ *
+ *   COMPLETE → completeInstance() marks done, regenerates projections from
+ *              the actual completion date, promotes the first projected to
+ *              upcoming. If completedEarlier/later than scheduled, all future
+ *              projections shift accordingly.
+ *
+ *   SKIP    → skipInstance() marks skipped. Projections remain on their
+ *              original dates (cadence unchanged). The next projected
+ *              instance is promoted to upcoming.
+ *
+ *   SNOOZE  → snoozeInstance() sets snooze_until, no new instance created.
  *
  * COUNTDOWN MODE (mode = 'countdown')
- *   All instances are pre-generated at creation time, scheduled
- *   backward from a fixed target_date. When an instance is
- *   completed, the remaining instances are recalculated backward
- *   from the target -- NOT forward from the completion date.
- *   The target date is always the anchor.
- *
- *   After the target date passes:
- *     continue_after_target = true  -> switches to standard mode;
- *       first post-target instance is due at target_date + interval
- *     continue_after_target = false -> task is deactivated
+ *   All instances are pre-generated at creation time, scheduled backward
+ *   from a fixed target_date. No projected instances are used for countdown
+ *   tasks — the pre-generated instances fill that role.
  *
  * EVENT OVERRIDE (one-off date adjustment)
- *   A single upcoming instance can be moved to align with a future
- *   event. The instance is updated in place: its dates change to
- *   (event_date - days_before_event) and it is flagged with the
- *   event details. After completion the task resumes its normal
- *   cadence -- unless override_next_date is set, in which case the
- *   next instance is anchored to that date instead.
+ *   A single upcoming instance can be moved to align with a future event.
+ *
+ * PROJECTION LIFECYCLE
+ *   status='projected', is_projected=true  → forecast, not shown in list view
+ *   status='upcoming',  is_projected=false → next actionable, shown in list view
+ *   When projected is promoted to upcoming: due window is expanded from the
+ *   stored interval_anchor_date using the task's min/max interval.
  */
 
 import { addDays, format, parseISO, isAfter, isBefore } from 'date-fns';
 import { createClient } from '@/lib/supabase/client';
 import type { Task, Instance, InstanceStatus } from '@/types';
 
-// Lazy singleton -- NOT evaluated at module import time.
-// Server components import pure helpers (deriveStatus etc.) from this module;
-// calling createClient() at the top level would run during the build step
-// before environment variables are injected, crashing the Vercel build.
+// Lazy singleton — not evaluated at module import time.
 let _client: ReturnType<typeof createClient> | null = null;
 function db() {
   if (!_client) _client = createClient();
@@ -57,11 +62,15 @@ export function toISODate(d: Date): string {
 
 /**
  * Derives the display status for an instance based on current date.
- * completed/skipped/snoozed are taken from the stored column;
+ * completed / skipped / snoozed / projected are taken from the stored column;
  * upcoming vs due is always recalculated from dates.
  */
 export function deriveStatus(instance: Instance): InstanceStatus {
-  if (instance.status === 'completed' || instance.status === 'skipped') {
+  if (
+    instance.status === 'completed' ||
+    instance.status === 'skipped' ||
+    instance.status === 'projected'
+  ) {
     return instance.status;
   }
   if (instance.status === 'snoozed') {
@@ -104,12 +113,6 @@ export function calculateNextWindow(
 /**
  * Calculates all instance windows for a countdown task, ordered
  * oldest-first (chronological).
- *
- * For each n = 0, 1, 2, ...:
- *   due_date_end   = target - days_before_target - n * interval_min_days
- *   due_date_start = due_date_end - (interval_max_days - interval_min_days)
- *
- * Stops when due_date_end would be in the past.
  */
 export function calculateCountdownWindows(
   task: Pick<Task, 'target_date' | 'days_before_target' | 'interval_min_days' | 'interval_max_days'>
@@ -128,7 +131,7 @@ export function calculateCountdownWindows(
     const dueStart = addDays(dueEnd, -spread);
 
     if (isBefore(dueEnd, t)) break;
-    if (n >= 200) break; // safety cap
+    if (n >= 200) break;
 
     windows.push({
       due_date_start: toISODate(dueStart),
@@ -144,9 +147,8 @@ export function calculateCountdownWindows(
 // --- Instance creation -------------------------------------------------------
 
 /**
- * Creates the first instance for a newly created STANDARD task.
- * Uses initial_anchor_date if the user entered a past "last done"
- * date; otherwise anchors to today.
+ * Creates the first instance for a newly created STANDARD task, then
+ * pre-generates 6 months of projected instances beyond it.
  */
 export async function createFirstInstance(task: Task): Promise<Instance | null> {
   const anchor = task.initial_anchor_date
@@ -164,6 +166,7 @@ export async function createFirstInstance(task: Task): Promise<Instance | null> 
       due_date_end:         window.due_date_end,
       interval_anchor_date: toISODate(anchor),
       status:               'upcoming',
+      is_projected:         false,
     })
     .select()
     .single();
@@ -172,13 +175,17 @@ export async function createFirstInstance(task: Task): Promise<Instance | null> 
     console.error('createFirstInstance error:', error);
     return null;
   }
+
+  // Generate projections starting from the end of the upcoming window so
+  // they don't overlap with the confirmed instance.
+  await generateProjectedInstances(task, parseISO(data.due_date_end));
+
   return data;
 }
 
 /**
  * Generates ALL instances for a COUNTDOWN task at creation time.
- * Also called to regenerate after a completion (the target date
- * is the fixed anchor, not the completion date).
+ * Also called to regenerate after a completion.
  */
 export async function generateCountdownInstances(task: Task): Promise<Instance[] | null> {
   const windows = calculateCountdownWindows(task);
@@ -192,6 +199,7 @@ export async function generateCountdownInstances(task: Task): Promise<Instance[]
     due_date_end:         w.due_date_end,
     interval_anchor_date: null,
     status:               'upcoming' as InstanceStatus,
+    is_projected:         false,
   }));
 
   const { data, error } = await db().from('instances').insert(inserts).select();
@@ -206,19 +214,18 @@ export async function generateCountdownInstances(task: Task): Promise<Instance[]
 // --- Instance actions --------------------------------------------------------
 
 /**
- * Marks an instance as completed and schedules the next one.
+ * Marks an instance as completed and rebuilds the forward schedule.
  *
  * Standard mode:
- *   Creates the next instance anchored to actualDate.
- *   If the completed instance has override_next_date set (from an event
- *   override with resume_normal_cadence=false), uses that date as the
- *   anchor for the following instance instead.
+ *   Deletes all projected instances for this task, then regenerates them
+ *   anchored to actualDate (or override_next_date if set). Promotes the
+ *   first projected instance to upcoming. This shifts the entire forward
+ *   schedule when completed earlier or later than the midpoint date.
  *
  * Countdown mode:
- *   Deletes remaining upcoming/snoozed instances, then either
- *   regenerates them backward from target (if target hasn't passed),
- *   creates a forward-scheduled instance (target passed + continue),
- *   or deactivates the task (target passed + no continue).
+ *   Deletes remaining upcoming/snoozed instances, then either regenerates
+ *   them backward from target (if target hasn't passed), creates a forward-
+ *   scheduled instance (target passed + continue), or deactivates the task.
  */
 export async function completeInstance(
   instanceId: string,
@@ -254,16 +261,24 @@ export async function completeInstance(
     ? parseISO(updated.override_next_date)
     : actualDate;
 
-  const next = await createNextInstance(task, anchor);
+  // Wipe old projections, regenerate from new anchor, then promote the first.
+  await generateProjectedInstances(task, anchor);
+  const next = await promoteNextProjected(task);
+
   return { updated, next };
 }
 
 /**
  * Marks an instance as skipped.
  *
- * Standard mode: creates the next instance anchored to today.
- * Countdown mode: just marks as skipped -- other pre-generated
- *   instances already exist; no new one is needed.
+ * Standard mode:
+ *   Does NOT regenerate projections — the schedule stays anchored to the
+ *   last completion date. Simply promotes the next projected instance to
+ *   upcoming, so the list view shows the next date unchanged.
+ *
+ * Countdown mode:
+ *   Marks as skipped; the pre-generated upcoming instances already handle
+ *   the schedule, so no promotion is needed.
  */
 export async function skipInstance(
   instanceId: string,
@@ -285,7 +300,13 @@ export async function skipInstance(
     return { updated, next: null };
   }
 
-  const next = await createNextInstance(task, today());
+  // Promote the next projected to upcoming. If no projections exist (old data
+  // created before projections were introduced), fall back to creating one.
+  let next = await promoteNextProjected(task);
+  if (!next) {
+    next = await createNextInstance(task, today());
+  }
+
   return { updated, next };
 }
 
@@ -318,19 +339,6 @@ export async function snoozeInstance(
 
 /**
  * Adjusts a specific instance to align with a one-time event.
- *
- * The instance's due window is collapsed to the single calculated date
- * (event_date - days_before_event). The original task cadence is NOT
- * affected -- after this instance is completed, the next instance is
- * scheduled normally from the actual completion date (or from
- * override_next_date if the user chose a custom post-event anchor).
- *
- * @param instanceId       - The instance to adjust (must be upcoming/due)
- * @param eventName        - User-readable label, e.g. "Vacation to Italy"
- * @param eventDate        - ISO date of the event itself
- * @param daysBefore       - How many days before the event to do the task
- * @param overrideNextDate - If resume_normal_cadence=false, the explicit
- *                           anchor for the following instance
  */
 export async function createEventOverride(
   instanceId: string,
@@ -366,23 +374,14 @@ export async function createEventOverride(
 // --- Delete operations -------------------------------------------------------
 
 /**
- * Deletes a single instance and generates the next one for standard tasks.
- *
- * Treated like a skip: the next instance is anchored to the deleted
- * instance's due_date_end so the cadence continues from where it would
- * have been. For countdown tasks, the pre-generated instances already
- * handle the schedule -- no new one is created.
+ * Deletes a single instance. For standard tasks, promotes the next projected
+ * to upcoming (or creates one if no projections exist). Countdown tasks
+ * already have pre-generated instances.
  */
 export async function deleteInstance(
   instanceId: string,
   task: Task
 ): Promise<{ next: Instance | null }> {
-  const { data: instance } = await db()
-    .from('instances')
-    .select('due_date_end, status')
-    .eq('id', instanceId)
-    .single();
-
   const { error } = await db()
     .from('instances')
     .delete()
@@ -393,18 +392,19 @@ export async function deleteInstance(
     return { next: null };
   }
 
-  if (!instance || task.mode === 'countdown') {
+  if (task.mode === 'countdown') {
     return { next: null };
   }
 
-  const anchor = parseISO(instance.due_date_end);
-  const next = await createNextInstance(task, anchor);
+  let next = await promoteNextProjected(task);
+  if (!next) {
+    next = await createNextInstance(task, today());
+  }
   return { next };
 }
 
 /**
- * Hard-deletes a task and all its instances.
- * Instances are deleted first in case the DB FK is not set to CASCADE.
+ * Hard-deletes a task and all its instances (including projected ones).
  */
 export async function deleteTask(taskId: string): Promise<boolean> {
   await db().from('instances').delete().eq('task_id', taskId);
@@ -420,8 +420,105 @@ export async function deleteTask(taskId: string): Promise<boolean> {
 // --- Internal helpers --------------------------------------------------------
 
 /**
+ * Returns the midpoint of the task's interval range (rounded).
+ * Used as the projection cadence for standard-mode tasks.
+ */
+function midpointDays(task: Pick<Task, 'interval_min_days' | 'interval_max_days'>): number {
+  return Math.round((task.interval_min_days + task.interval_max_days) / 2);
+}
+
+/**
+ * Deletes all existing projected instances for a task, then inserts new ones
+ * using the midpoint interval as the cadence.
+ *
+ * Projections are at: anchorDate + n*midpoint (n = 1, 2, ..., up to 6 months).
+ * Each projection stores interval_anchor_date = anchorDate + (n-1)*midpoint so
+ * that when promoted, calculateNextWindow(interval_anchor_date, task) produces
+ * the correct min/max due window.
+ */
+async function generateProjectedInstances(task: Task, anchorDate: Date): Promise<void> {
+  if (task.mode !== 'standard') return;
+
+  // Wipe stale projections before rebuilding.
+  await db()
+    .from('instances')
+    .delete()
+    .eq('task_id', task.id)
+    .eq('is_projected', true);
+
+  const midpoint = midpointDays(task);
+  const cutoff   = addDays(today(), 182); // ~6 months
+  const inserts: Record<string, unknown>[] = [];
+
+  for (let n = 1; n <= 100; n++) {
+    const projDate = addDays(anchorDate, n * midpoint);
+    if (isAfter(projDate, cutoff)) break;
+
+    inserts.push({
+      task_id:              task.id,
+      user_id:              task.user_id,
+      due_date_start:       toISODate(projDate),
+      due_date_end:         toISODate(projDate),
+      // Anchor = expected completion of the previous instance in this projection chain.
+      // Used by promoteNextProjected to expand the single date to a proper window.
+      interval_anchor_date: toISODate(addDays(anchorDate, (n - 1) * midpoint)),
+      status:               'projected' as InstanceStatus,
+      is_projected:         true,
+    });
+  }
+
+  if (inserts.length > 0) {
+    const { error } = await db().from('instances').insert(inserts);
+    if (error) console.error('generateProjectedInstances error:', error);
+  }
+}
+
+/**
+ * Finds the earliest projected instance for a task and promotes it to
+ * 'upcoming' with a full due window calculated from its stored anchor.
+ * Returns the promoted instance, or null if no projected instances exist.
+ */
+async function promoteNextProjected(task: Task): Promise<Instance | null> {
+  const { data: proj } = await db()
+    .from('instances')
+    .select('id, interval_anchor_date, due_date_start')
+    .eq('task_id', task.id)
+    .eq('is_projected', true)
+    .order('due_date_start', { ascending: true })
+    .limit(1)
+    .single();
+
+  if (!proj) return null;
+
+  // Reconstruct the due window from the stored anchor date.
+  const anchor = proj.interval_anchor_date
+    ? parseISO(proj.interval_anchor_date)
+    : addDays(parseISO(proj.due_date_start), -midpointDays(task));
+  const window = calculateNextWindow(anchor, task);
+
+  const { data, error } = await db()
+    .from('instances')
+    .update({
+      status:         'upcoming',
+      is_projected:   false,
+      due_date_start: window.due_date_start,
+      due_date_end:   window.due_date_end,
+    })
+    .eq('id', proj.id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('promoteNextProjected error:', error);
+    return null;
+  }
+  return data;
+}
+
+/**
  * Inserts the next instance for a standard-mode task.
- * Guards against creating a duplicate future instance.
+ * Used as a fallback for tasks created before projections were introduced.
+ * Guards against creating a duplicate when an upcoming instance already exists.
  */
 async function createNextInstance(
   task: Task,
@@ -432,10 +529,11 @@ async function createNextInstance(
     .select('id')
     .eq('task_id', task.id)
     .in('status', ['upcoming', 'snoozed'])
+    .eq('is_projected', false)
     .limit(1);
 
   if (existing && existing.length > 0) {
-    console.warn('createNextInstance: future instance already exists, skipping');
+    console.warn('createNextInstance: upcoming instance already exists, skipping');
     return null;
   }
 
@@ -450,6 +548,7 @@ async function createNextInstance(
       due_date_end:         window.due_date_end,
       interval_anchor_date: toISODate(anchorDate),
       status:               'upcoming',
+      is_projected:         false,
     })
     .select()
     .single();
@@ -463,9 +562,6 @@ async function createNextInstance(
 
 /**
  * Post-completion logic for countdown tasks.
- * Clears all remaining future instances, then either regenerates
- * them (target hasn't passed), transitions to standard mode
- * (target passed + continue), or deactivates (target passed + stop).
  */
 async function handlePostCompleteCountdown(
   task: Task

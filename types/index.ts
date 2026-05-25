@@ -6,7 +6,7 @@
 //   Instance = a single scheduled occurrence of a task
 //   Routine  = RESERVED for Phase 2 (linked task groups) — not used yet
 
-export type InstanceStatus = 'upcoming' | 'due' | 'completed' | 'skipped' | 'snoozed';
+export type InstanceStatus = 'upcoming' | 'due' | 'completed' | 'skipped' | 'snoozed' | 'projected';
 export type LinkResolution = 'do_both' | 'reset' | 'delay';
 export type TaskMode       = 'standard' | 'countdown';
 export type IntervalType   = 'exact' | 'range';
@@ -85,6 +85,8 @@ export interface Instance {
   before_photo_url: string | null;
   after_photo_url: string | null;
   google_calendar_event_id: string | null;
+  // Projection flag — true for forecast instances not yet promoted to upcoming
+  is_projected: boolean;
   // Cost tracking
   cost: number | null;
   // Event override
