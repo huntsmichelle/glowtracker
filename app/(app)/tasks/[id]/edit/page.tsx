@@ -47,6 +47,7 @@ export default async function EditTaskPage({ params }: Props) {
     name:                  t.name,
     category_id:           t.category_id ?? '',
     description:           t.description ?? '',
+    default_cost:          t.default_cost != null ? String(t.default_cost) : '',
     intervalType:          isExact ? 'exact' : 'range',
     intervalMin:           t.interval_min_days,
     intervalMax:           t.interval_max_days,

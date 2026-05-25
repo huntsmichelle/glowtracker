@@ -50,6 +50,7 @@ export interface Task {
   interval_min_days: number;
   interval_max_days: number;
   default_reminder_days: number;
+  default_cost: number | null;
   is_active: boolean;
   // Scheduling mode
   mode: TaskMode;
@@ -82,6 +83,14 @@ export interface Instance {
   before_photo_url: string | null;
   after_photo_url: string | null;
   google_calendar_event_id: string | null;
+  // Cost tracking
+  cost: number | null;
+  // Event override
+  is_event_override: boolean;
+  event_name: string | null;
+  event_date: string | null;
+  days_before_event: number | null;
+  override_next_date: string | null;
   created_at: string;
   updated_at: string;
   // joined
@@ -145,6 +154,7 @@ export interface TaskFormValues {
   category_id: string;
   description: string;
   mode: TaskMode;
+  default_cost: string;           // currency string, empty = no default
   // Interval — stored as days in DB; UI lets user choose unit and exact vs range
   intervalType: IntervalType;
   intervalMin: number;
@@ -158,6 +168,14 @@ export interface TaskFormValues {
   target_label: string;
   days_before_target: number;
   continue_after_target: boolean;
+}
+
+export interface EventOverrideFormValues {
+  event_name: string;
+  event_date: string;
+  days_before_event: number;
+  resume_normal_cadence: boolean;
+  override_next_date: string;     // only used when resume_normal_cadence = false
 }
 
 export interface SnoozeValues {

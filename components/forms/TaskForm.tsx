@@ -76,6 +76,7 @@ export default function TaskForm({
   const [categoryId, setCategoryId]   = useState(initialValues?.category_id ?? '');
   const [description, setDescription] = useState(initialValues?.description ?? '');
   const [reminderDays, setReminderDays] = useState(initialValues?.default_reminder_days ?? 2);
+  const [defaultCost, setDefaultCost]   = useState(initialValues?.default_cost ?? '');
 
   // ── Interval ──────────────────────────────────────────────────────────────
   const [intervalType, setIntervalType] = useState<IntervalType>(
@@ -298,6 +299,7 @@ export default function TaskForm({
       interval_min_days:    intervalMinDays(),
       interval_max_days:    intervalMaxDays(),
       default_reminder_days: reminderDays,
+      default_cost:         defaultCost !== '' ? Number(defaultCost) : null,
       user_id:              userId,
       mode,
       initial_anchor_date:
@@ -563,6 +565,20 @@ export default function TaskForm({
             placeholder="e.g. Use Wella 6N + 20-vol developer, apply root-to-tip..."
             className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 resize-none"
           />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Typical cost ($)</label>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+            <input
+              type="number" min={0} step="0.01" value={defaultCost}
+              onChange={e => setDefaultCost(e.target.value)}
+              placeholder="0.00"
+              className="w-full border border-gray-200 rounded-lg pl-7 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400"
+            />
+          </div>
+          <p className="text-xs text-gray-400 mt-1">Pre-fills the cost field when you log a completion. Optional.</p>
         </div>
 
         <div>
