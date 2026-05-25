@@ -1,2 +1,2 @@
-// Deprecated — use components/TaskDetailClient.tsx instead.
-export { default } from '@/components/TaskDetailClient';
+// Deprecated — use components/InstanceDetailClient.tsx instead.
+export { default } from '@/components/InstanceDetailClient';

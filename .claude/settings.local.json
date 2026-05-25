@@ -10,7 +10,9 @@
       "Bash(Sort-Object)",
       "Bash(npx tsc *)",
       "Bash(npx next *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)"
     ]
   }
 }

@@ -3,60 +3,60 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { format, parseISO, differenceInDays } from 'date-fns';
-import { completeTask, skipTask, snoozeTask, today, deriveStatus } from '@/lib/taskEngine';
-import type { TaskWithRoutine, Routine } from '@/types';
+import { completeInstance, skipInstance, snoozeInstance, today, deriveStatus } from '@/lib/instanceEngine';
+import type { InstanceWithTask, Task } from '@/types';
 
 interface Props {
-  tasks: TaskWithRoutine[];
+  instances: InstanceWithTask[];
 }
 
-export default function DashboardClient({ tasks: initial }: Props) {
-  const [tasks, setTasks]           = useState(initial);
-  const [completeModal, setCompleteModal] = useState<{ task: TaskWithRoutine } | null>(null);
-  const [snoozeModal, setSnoozeModal]     = useState<{ task: TaskWithRoutine } | null>(null);
+export default function DashboardClient({ instances: initial }: Props) {
+  const [instances, setInstances]           = useState(initial);
+  const [completeModal, setCompleteModal] = useState<{ instance: InstanceWithTask } | null>(null);
+  const [snoozeModal, setSnoozeModal]     = useState<{ instance: InstanceWithTask } | null>(null);
   const [completionDate, setCompletionDate] = useState(format(today(), 'yyyy-MM-dd'));
   const [snoozeDays, setSnoozeDays]         = useState(3);
   const [loading, setLoading]               = useState<string | null>(null);
 
-  function removeTask(id: string) {
-    setTasks(prev => prev.filter(t => t.id !== id));
+  function removeInstance(id: string) {
+    setInstances(prev => prev.filter(i => i.id !== id));
   }
 
-  async function handleComplete(task: TaskWithRoutine) {
-    setLoading(task.id);
+  async function handleComplete(instance: InstanceWithTask) {
+    setLoading(instance.id);
     const date = new Date(completionDate + 'T00:00:00');
-    await completeTask(task.id, task.routine as Routine, date);
-    removeTask(task.id);
+    await completeInstance(instance.id, instance.task as Task, date);
+    removeInstance(instance.id);
     setCompleteModal(null);
     setLoading(null);
   }
 
-  async function handleSkip(task: TaskWithRoutine) {
-    setLoading(task.id);
-    await skipTask(task.id, task.routine as Routine);
-    removeTask(task.id);
+  async function handleSkip(instance: InstanceWithTask) {
+    setLoading(instance.id);
+    await skipInstance(instance.id, instance.task as Task);
+    removeInstance(instance.id);
     setLoading(null);
   }
 
-  async function handleSnooze(task: TaskWithRoutine) {
-    setLoading(task.id);
-    await snoozeTask(task.id, snoozeDays, task.due_date_end);
-    removeTask(task.id);
+  async function handleSnooze(instance: InstanceWithTask) {
+    setLoading(instance.id);
+    await snoozeInstance(instance.id, snoozeDays, instance.due_date_end);
+    removeInstance(instance.id);
     setSnoozeModal(null);
     setLoading(null);
   }
 
-  const due      = tasks.filter(t => deriveStatus(t) === 'due');
-  const upcoming = tasks.filter(t => deriveStatus(t) !== 'due');
+  const due      = instances.filter(i => deriveStatus(i) === 'due');
+  const upcoming = instances.filter(i => deriveStatus(i) !== 'due');
 
-  if (tasks.length === 0) {
+  if (instances.length === 0) {
     return (
       <div className="text-center py-16">
         <div className="text-4xl mb-4">✨</div>
         <h2 className="text-xl font-semibold text-gray-700 mb-2">All caught up!</h2>
-        <p className="text-gray-400 text-sm mb-6">No upcoming routines right now.</p>
-        <Link href="/routines/new" className="inline-block bg-pink-500 text-white text-sm font-medium rounded-lg px-4 py-2.5">
-          Add a routine
+        <p className="text-gray-400 text-sm mb-6">No upcoming tasks right now.</p>
+        <Link href="/tasks/new" className="inline-block bg-pink-500 text-white text-sm font-medium rounded-lg px-4 py-2.5">
+          Add a task
         </Link>
       </div>
     );
@@ -65,8 +65,8 @@ export default function DashboardClient({ tasks: initial }: Props) {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-gray-800">Your Routines</h1>
-        <Link href="/routines/new" className="text-sm bg-pink-500 text-white font-medium rounded-lg px-3 py-1.5">
+        <h1 className="text-xl font-bold text-gray-800">Your Tasks</h1>
+        <Link href="/tasks/new" className="text-sm bg-pink-500 text-white font-medium rounded-lg px-3 py-1.5">
           + New
         </Link>
       </div>
@@ -75,14 +75,14 @@ export default function DashboardClient({ tasks: initial }: Props) {
         <section>
           <h2 className="text-xs font-semibold text-red-500 uppercase tracking-wide mb-3">Due Now</h2>
           <div className="space-y-3">
-            {due.map(task => (
-              <TaskCard
-                key={task.id}
-                task={task}
-                loading={loading === task.id}
-                onComplete={() => { setCompletionDate(format(today(), 'yyyy-MM-dd')); setCompleteModal({ task }); }}
-                onSkip={() => handleSkip(task)}
-                onSnooze={() => { setSnoozeDays(3); setSnoozeModal({ task }); }}
+            {due.map(instance => (
+              <InstanceCard
+                key={instance.id}
+                instance={instance}
+                loading={loading === instance.id}
+                onComplete={() => { setCompletionDate(format(today(), 'yyyy-MM-dd')); setCompleteModal({ instance }); }}
+                onSkip={() => handleSkip(instance)}
+                onSnooze={() => { setSnoozeDays(3); setSnoozeModal({ instance }); }}
               />
             ))}
           </div>
@@ -93,14 +93,14 @@ export default function DashboardClient({ tasks: initial }: Props) {
         <section>
           <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Upcoming</h2>
           <div className="space-y-3">
-            {upcoming.map(task => (
-              <TaskCard
-                key={task.id}
-                task={task}
-                loading={loading === task.id}
-                onComplete={() => { setCompletionDate(format(today(), 'yyyy-MM-dd')); setCompleteModal({ task }); }}
-                onSkip={() => handleSkip(task)}
-                onSnooze={() => { setSnoozeDays(3); setSnoozeModal({ task }); }}
+            {upcoming.map(instance => (
+              <InstanceCard
+                key={instance.id}
+                instance={instance}
+                loading={loading === instance.id}
+                onComplete={() => { setCompletionDate(format(today(), 'yyyy-MM-dd')); setCompleteModal({ instance }); }}
+                onSkip={() => handleSkip(instance)}
+                onSnooze={() => { setSnoozeDays(3); setSnoozeModal({ instance }); }}
               />
             ))}
           </div>
@@ -111,7 +111,7 @@ export default function DashboardClient({ tasks: initial }: Props) {
       {completeModal && (
         <Modal onClose={() => setCompleteModal(null)}>
           <h3 className="font-semibold text-gray-800 mb-1">Log completion</h3>
-          <p className="text-sm text-gray-500 mb-4">{completeModal.task.routine?.name}</p>
+          <p className="text-sm text-gray-500 mb-4">{completeModal.instance.task?.name}</p>
           <label className="block text-sm font-medium text-gray-700 mb-1">Actual date</label>
           <input
             type="date"
@@ -128,11 +128,11 @@ export default function DashboardClient({ tasks: initial }: Props) {
               Cancel
             </button>
             <button
-              onClick={() => handleComplete(completeModal.task)}
-              disabled={loading === completeModal.task.id}
+              onClick={() => handleComplete(completeModal.instance)}
+              disabled={loading === completeModal.instance.id}
               className="flex-1 bg-green-500 text-white text-sm font-medium rounded-lg py-2 disabled:opacity-50"
             >
-              {loading === completeModal.task.id ? 'Saving…' : 'Mark complete'}
+              {loading === completeModal.instance.id ? 'Saving…' : 'Mark complete'}
             </button>
           </div>
         </Modal>
@@ -142,7 +142,7 @@ export default function DashboardClient({ tasks: initial }: Props) {
       {snoozeModal && (
         <Modal onClose={() => setSnoozeModal(null)}>
           <h3 className="font-semibold text-gray-800 mb-1">Snooze</h3>
-          <p className="text-sm text-gray-500 mb-4">{snoozeModal.task.routine?.name}</p>
+          <p className="text-sm text-gray-500 mb-4">{snoozeModal.instance.task?.name}</p>
           <label className="block text-sm font-medium text-gray-700 mb-1">Days to snooze</label>
           <input
             type="number"
@@ -160,11 +160,11 @@ export default function DashboardClient({ tasks: initial }: Props) {
               Cancel
             </button>
             <button
-              onClick={() => handleSnooze(snoozeModal.task)}
-              disabled={loading === snoozeModal.task.id}
+              onClick={() => handleSnooze(snoozeModal.instance)}
+              disabled={loading === snoozeModal.instance.id}
               className="flex-1 bg-amber-500 text-white text-sm font-medium rounded-lg py-2 disabled:opacity-50"
             >
-              {loading === snoozeModal.task.id ? 'Saving…' : 'Snooze'}
+              {loading === snoozeModal.instance.id ? 'Saving…' : 'Snooze'}
             </button>
           </div>
         </Modal>
@@ -173,38 +173,38 @@ export default function DashboardClient({ tasks: initial }: Props) {
   );
 }
 
-// ─── TaskCard ─────────────────────────────────────────────────────────────────
+// ─── InstanceCard ──────────────────────────────────────────────────────────────
 
 interface CardProps {
-  task: TaskWithRoutine;
+  instance: InstanceWithTask;
   loading: boolean;
   onComplete: () => void;
   onSkip: () => void;
   onSnooze: () => void;
 }
 
-function TaskCard({ task, loading, onComplete, onSkip, onSnooze }: CardProps) {
-  const status    = deriveStatus(task);
-  const daysUntil = differenceInDays(parseISO(task.due_date_start), today());
-  const isOverdue = differenceInDays(today(), parseISO(task.due_date_end)) > 0;
+function InstanceCard({ instance, loading, onComplete, onSkip, onSnooze }: CardProps) {
+  const status    = deriveStatus(instance);
+  const daysUntil = differenceInDays(parseISO(instance.due_date_start), today());
+  const isOverdue = differenceInDays(today(), parseISO(instance.due_date_end)) > 0;
 
-  const dateLabel = `${format(parseISO(task.due_date_start), 'MMM d')} – ${format(parseISO(task.due_date_end), 'MMM d')}`;
+  const dateLabel = `${format(parseISO(instance.due_date_start), 'MMM d')} – ${format(parseISO(instance.due_date_end), 'MMM d')}`;
 
   let urgencyLabel: string;
   if (isOverdue) {
-    urgencyLabel = `Overdue by ${differenceInDays(today(), parseISO(task.due_date_end))}d`;
+    urgencyLabel = `Overdue by ${differenceInDays(today(), parseISO(instance.due_date_end))}d`;
   } else if (daysUntil <= 0) {
     urgencyLabel = 'Due now';
   } else {
     urgencyLabel = `In ${daysUntil} day${daysUntil === 1 ? '' : 's'}`;
   }
 
-  const categoryColor = task.routine?.category?.color ?? '#6B7280';
-  const isCountdown   = task.routine?.mode === 'countdown';
+  const categoryColor = instance.task?.category?.color ?? '#6B7280';
+  const isCountdown   = instance.task?.mode === 'countdown';
 
   return (
     <Link
-      href={`/tasks/${task.id}`}
+      href={`/instances/${instance.id}`}
       className="block bg-white rounded-xl border border-gray-100 shadow-sm p-4 hover:border-pink-200 transition-colors"
     >
       <div className="flex items-start justify-between gap-2 mb-3">
@@ -214,11 +214,11 @@ function TaskCard({ task, loading, onComplete, onSkip, onSnooze }: CardProps) {
             style={{ backgroundColor: categoryColor }}
           />
           <div className="min-w-0">
-            <p className="font-medium text-gray-800 text-sm truncate">{task.routine?.name}</p>
+            <p className="font-medium text-gray-800 text-sm truncate">{instance.task?.name}</p>
             <p className="text-xs text-gray-400">
-              {task.routine?.category?.name ?? ''}
-              {isCountdown && task.routine?.target_label && (
-                <span className="ml-1 text-purple-400">→ {task.routine.target_label}</span>
+              {instance.task?.category?.name ?? ''}
+              {isCountdown && instance.task?.target_label && (
+                <span className="ml-1 text-purple-400">→ {instance.task.target_label}</span>
               )}
             </p>
           </div>

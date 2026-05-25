@@ -6,5 +6,5 @@ interface Props {
 
 export default async function OccurrenceDetailRedirect({ params }: Props) {
   const { id } = await params;
-  redirect(`/tasks/${id}`);
+  redirect(`/instances/${id}`);
 }

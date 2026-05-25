@@ -16,7 +16,7 @@ export default function NavBar() {
 
   const navLinks = [
     { href: '/', label: 'Dashboard' },
-    { href: '/routines', label: 'Routines' },
+    { href: '/tasks', label: 'Tasks' },
   ];
 
   return (

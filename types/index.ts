@@ -1,11 +1,16 @@
 // Shared TypeScript types for GlowTracker
 // Mirror the Supabase schema — keep in sync with migrations.
+//
+// Terminology (v1.2):
+//   Task     = the recurring series (e.g. "Hair Coloring every 6 weeks")
+//   Instance = a single scheduled occurrence of a task
+//   Routine  = RESERVED for Phase 2 (linked task groups) — not used yet
 
-export type TaskStatus = 'upcoming' | 'due' | 'completed' | 'skipped' | 'snoozed';
+export type InstanceStatus = 'upcoming' | 'due' | 'completed' | 'skipped' | 'snoozed';
 export type LinkResolution = 'do_both' | 'reset' | 'delay';
-export type RoutineMode = 'standard' | 'countdown';
-export type IntervalType = 'exact' | 'range';
-export type IntervalUnit = 'days' | 'weeks';
+export type TaskMode       = 'standard' | 'countdown';
+export type IntervalType   = 'exact' | 'range';
+export type IntervalUnit   = 'days' | 'weeks';
 
 export interface Profile {
   id: string;
@@ -24,7 +29,19 @@ export interface Category {
   created_at: string;
 }
 
-export interface Routine {
+export interface ServiceProvider {
+  id: string;
+  user_id: string;
+  name: string;
+  phone: string | null;
+  website_url: string | null;
+  address: string | null;
+  category_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Task {
   id: string;
   user_id: string;
   category_id: string | null;
@@ -34,29 +51,32 @@ export interface Routine {
   interval_max_days: number;
   default_reminder_days: number;
   is_active: boolean;
-  // Countdown mode fields
-  mode: RoutineMode;
+  // Scheduling mode
+  mode: TaskMode;
   target_date: string | null;
   target_label: string | null;
   days_before_target: number | null;
   continue_after_target: boolean;
   initial_anchor_date: string | null;
+  // Service provider
+  service_provider_id: string | null;
   created_at: string;
   updated_at: string;
   // joined
   category?: Category;
-  tasks?: Task[];
+  instances?: Instance[];
+  service_provider?: ServiceProvider;
 }
 
-export interface Task {
+export interface Instance {
   id: string;
-  routine_id: string;
+  task_id: string;
   user_id: string;
   due_date_start: string;         // ISO date YYYY-MM-DD
   due_date_end: string;
   interval_anchor_date: string | null;
   snooze_until: string | null;
-  status: TaskStatus;
+  status: InstanceStatus;
   actual_completion_date: string | null;
   notes: string | null;
   before_photo_url: string | null;
@@ -65,33 +85,34 @@ export interface Task {
   created_at: string;
   updated_at: string;
   // joined
-  routine?: Routine;
+  task?: Task;
 }
 
 export interface Product {
   id: string;
   user_id: string;
   name: string;
-  notes: string | null;
+  notes: string | null;               // "description" in UI
   product_url: string | null;
-  uses_per_supply_unit: number | null;
+  uses_per_supply_unit: number | null; // "uses per unit" in UI
   supply_warning_threshold: number | null;
   created_at: string;
   updated_at: string;
 }
 
-export interface RoutineProduct {
+export interface TaskProduct {
   id: string;
-  routine_id: string;
+  task_id: string;
   product_id: string;
   user_id: string;
+  track_usage: boolean;
   created_at: string;
   product?: Product;
 }
 
 export interface PrepStep {
   id: string;
-  routine_id: string;
+  task_id: string;
   user_id: string;
   description: string;
   reminder_days_before: number;
@@ -99,21 +120,39 @@ export interface PrepStep {
   created_at: string;
 }
 
-// ─── Form value types ─────────────────────────────────────────────────────────
+// ─── Form helper types ────────────────────────────────────────────────────────
 
-export interface RoutineFormValues {
+export interface ProductFormEntry {
+  id?: string;            // existing product id (edit mode)
+  taskProductId?: string; // existing task_products row id (for removal)
+  name: string;
+  description: string;
+  product_url: string;
+  track_usage: boolean;
+  uses_per_supply_unit: number | '';
+}
+
+export interface ServiceProviderFormEntry {
+  id?: string;   // if selecting/editing an existing saved provider
+  name: string;
+  phone: string;
+  website_url: string;
+  address: string;
+}
+
+export interface TaskFormValues {
   name: string;
   category_id: string;
   description: string;
-  mode: RoutineMode;
-  // Interval: stored as days in DB; UI lets user pick days or weeks and exact vs range
+  mode: TaskMode;
+  // Interval — stored as days in DB; UI lets user choose unit and exact vs range
   intervalType: IntervalType;
-  intervalMin: number;        // in the selected unit
-  intervalMax: number;        // same as min when intervalType === 'exact'
+  intervalMin: number;
+  intervalMax: number;
   intervalUnit: IntervalUnit;
   default_reminder_days: number;
-  // Standard mode — set when user enters a past "last done" date at creation time
-  initial_anchor_date: string;  // empty string = today
+  // Standard mode anchor
+  initial_anchor_date: string;    // empty string = today
   // Countdown mode
   target_date: string;
   target_label: string;
@@ -127,6 +166,6 @@ export interface SnoozeValues {
 
 // ─── Computed display helpers ─────────────────────────────────────────────────
 
-export interface TaskWithRoutine extends Task {
-  routine: Routine & { category?: Category };
+export interface InstanceWithTask extends Instance {
+  task: Task & { category?: Category };
 }
