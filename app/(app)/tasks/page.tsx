@@ -1,9 +1,11 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import type { Task, Category } from '@/types';
+import type { Task, Category, Routine } from '@/types';
 
 export const dynamic = 'force-dynamic';
+
+type TaskRow = Task & { category?: Category; routine?: Pick<Routine, 'id' | 'name' | 'color'> | null };
 
 export default async function TasksListPage() {
   const supabase = await createClient();
@@ -13,21 +15,21 @@ export default async function TasksListPage() {
 
   const { data: tasksList } = await supabase
     .from('tasks')
-    .select('*, category:categories(*)')
+    .select('*, category:categories(*), routine:routines(id, name, color)')
     .eq('user_id', user.id)
     .eq('is_active', true)
     .order('name');
 
-  const grouped: Record<string, (Task & { category?: Category })[]> = {};
-  const uncategorized: (Task & { category?: Category })[] = [];
+  const grouped: Record<string, TaskRow[]> = {};
+  const uncategorized: TaskRow[] = [];
 
   for (const t of tasksList ?? []) {
-    const cat = (t as Task & { category?: Category }).category;
-    if (cat) {
-      if (!grouped[cat.name]) grouped[cat.name] = [];
-      grouped[cat.name].push(t as Task & { category?: Category });
+    const row = t as TaskRow;
+    if (row.category) {
+      if (!grouped[row.category.name]) grouped[row.category.name] = [];
+      grouped[row.category.name].push(row);
     } else {
-      uncategorized.push(t as Task & { category?: Category });
+      uncategorized.push(row);
     }
   }
 
@@ -55,7 +57,7 @@ export default async function TasksListPage() {
             <section key={catName}>
               <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">{catName}</h2>
               <div className="space-y-2">
-                {items.map(t => <TaskRow key={t.id} task={t} />)}
+                {items.map(t => <TaskRowItem key={t.id} task={t} />)}
               </div>
             </section>
           ))}
@@ -63,7 +65,7 @@ export default async function TasksListPage() {
             <section>
               <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Other</h2>
               <div className="space-y-2">
-                {uncategorized.map(t => <TaskRow key={t.id} task={t} />)}
+                {uncategorized.map(t => <TaskRowItem key={t.id} task={t} />)}
               </div>
             </section>
           )}
@@ -73,7 +75,7 @@ export default async function TasksListPage() {
   );
 }
 
-function TaskRow({ task }: { task: Task & { category?: Category } }) {
+function TaskRowItem({ task }: { task: TaskRow }) {
   const intervalLabel =
     task.interval_min_days === task.interval_max_days
       ? `Every ${task.interval_min_days}d`
@@ -86,14 +88,22 @@ function TaskRow({ task }: { task: Task & { category?: Category } }) {
       href={`/tasks/${task.id}`}
       className="flex items-center justify-between bg-white rounded-xl border border-gray-100 shadow-sm px-4 py-3 hover:border-pink-200 transition-colors"
     >
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 min-w-0">
         <span
           className="w-2.5 h-2.5 rounded-full flex-shrink-0"
           style={{ backgroundColor: task.category?.color ?? '#6B7280' }}
         />
-        <span className="text-sm font-medium text-gray-800">{task.name}</span>
+        <span className="text-sm font-medium text-gray-800 truncate">{task.name}</span>
+        {task.routine && (
+          <span
+            className="hidden sm:inline-flex items-center text-xs font-medium px-1.5 py-0.5 rounded-full text-white flex-shrink-0"
+            style={{ backgroundColor: task.routine.color }}
+          >
+            {task.routine.name}
+          </span>
+        )}
       </div>
-      <span className="text-xs text-gray-400">{intervalLabel}{modeLabel}</span>
+      <span className="text-xs text-gray-400 flex-shrink-0 ml-2">{intervalLabel}{modeLabel}</span>
     </Link>
   );
 }

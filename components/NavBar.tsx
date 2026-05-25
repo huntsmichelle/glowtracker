@@ -15,8 +15,9 @@ export default function NavBar() {
   }
 
   const navLinks = [
-    { href: '/', label: 'Dashboard' },
-    { href: '/tasks', label: 'Tasks' },
+    { href: '/',         label: 'Dashboard' },
+    { href: '/tasks',    label: 'Tasks' },
+    { href: '/routines', label: 'Routines' },
   ];
 
   return (
@@ -32,7 +33,7 @@ export default function NavBar() {
               key={link.href}
               href={link.href}
               className={`text-sm font-medium transition-colors ${
-                pathname === link.href
+                (link.href === '/' ? pathname === '/' : pathname.startsWith(link.href))
                   ? 'text-pink-600'
                   : 'text-gray-500 hover:text-gray-800'
               }`}

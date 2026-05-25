@@ -187,6 +187,20 @@ export default function InstanceDetailClient({ instance: initial }: Props) {
               <span className="font-medium">${instance.cost.toFixed(2)}</span>
             </div>
           )}
+          {instance.calendar_event_date && (
+            <div className="flex justify-between">
+              <span className="text-gray-400">Logged date</span>
+              <span className="text-blue-600 text-xs">
+                {format(parseISO(instance.calendar_event_date), 'MMM d, yyyy')}
+              </span>
+            </div>
+          )}
+          {instance.calendar_event_cost != null && (
+            <div className="flex justify-between">
+              <span className="text-gray-400">Logged cost</span>
+              <span className="text-blue-600 text-xs">${instance.calendar_event_cost.toFixed(2)}</span>
+            </div>
+          )}
           {instance.snooze_until && (
             <div className="flex justify-between">
               <span className="text-gray-400">Snoozed until</span>

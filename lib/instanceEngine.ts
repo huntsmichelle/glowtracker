@@ -236,6 +236,10 @@ export async function completeInstance(
   const updatePayload: Record<string, unknown> = {
     status:                 'completed',
     actual_completion_date: toISODate(actualDate),
+    // Store the calendar sync fields so Phase 6 can create the event
+    // from the actual date and cost rather than the scheduled window.
+    calendar_event_date: toISODate(actualDate),
+    calendar_event_cost: cost !== undefined ? cost : null,
   };
   if (cost !== undefined) updatePayload.cost = cost;
 

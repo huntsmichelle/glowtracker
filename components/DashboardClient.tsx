@@ -18,6 +18,7 @@ import type { InstanceWithTask, Task } from '@/types';
 
 interface Props {
   instances: InstanceWithTask[];
+  conflictCounts?: Record<string, number>;
 }
 
 type ViewMode = 'list' | 'calendar';
@@ -35,7 +36,7 @@ type PlannedEntry = {
 
 // ─── DashboardClient ──────────────────────────────────────────────────────────
 
-export default function DashboardClient({ instances: initial }: Props) {
+export default function DashboardClient({ instances: initial, conflictCounts = {} }: Props) {
   const [instances, setInstances] = useState(initial);
 
   // ── View mode (list / calendar) ────────────────────────────────────────────
@@ -66,7 +67,7 @@ export default function DashboardClient({ instances: initial }: Props) {
     const lastDay = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
     const { data } = await supabase
       .from('instances')
-      .select('*, task:tasks(*, category:categories(*))')
+      .select('*, task:tasks(*, category:categories(*), routine:routines(id, name, color))')
       .gte('due_date_start', firstDay)
       .lte('due_date_start', lastDay)
       .neq('status', 'skipped')
@@ -241,6 +242,23 @@ export default function DashboardClient({ instances: initial }: Props) {
   const due      = instances.filter(i => deriveStatus(i) === 'due');
   const upcoming = instances.filter(i => deriveStatus(i) !== 'due');
 
+  type RoutineInfo = { id: string; name: string; color: string } | null;
+
+  function groupByRoutine(items: InstanceWithTask[]) {
+    const map = new Map<string, { routine: RoutineInfo; items: InstanceWithTask[] }>();
+    for (const inst of items) {
+      const r = (inst.task as unknown as { routine?: RoutineInfo }).routine ?? null;
+      const key = r?.id ?? '__none__';
+      if (!map.has(key)) map.set(key, { routine: r, items: [] });
+      map.get(key)!.items.push(inst);
+    }
+    return [...map.entries()].sort(([ka, a], [kb, b]) => {
+      if (ka === '__none__') return 1;
+      if (kb === '__none__') return -1;
+      return (a.routine?.name ?? '').localeCompare(b.routine?.name ?? '');
+    });
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   // SUB-RENDERS (called as functions — avoids React remount on each render)
   // ─────────────────────────────────────────────────────────────────────────
@@ -377,8 +395,36 @@ export default function DashboardClient({ instances: initial }: Props) {
         {upcoming.length > 0 && (
           <section>
             <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Upcoming</h2>
-            <div className="space-y-3">
-              {upcoming.map(i => <InstanceCard key={i.id} instance={i} />)}
+            <div className="space-y-5">
+              {groupByRoutine(upcoming).map(([key, group]) => (
+                <div key={key}>
+                  {group.routine && (
+                    <div className="flex items-center gap-2 mb-2">
+                      <span
+                        className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: group.routine.color }}
+                      />
+                      <Link
+                        href={`/routines/${group.routine.id}`}
+                        className="text-xs font-semibold text-gray-500 hover:text-gray-700"
+                      >
+                        {group.routine.name}
+                      </Link>
+                      {conflictCounts[group.routine.id] > 0 && (
+                        <Link
+                          href={`/routines/${group.routine.id}`}
+                          className="text-xs font-semibold bg-red-100 text-red-500 rounded-full px-1.5 py-0.5"
+                        >
+                          {conflictCounts[group.routine.id]} conflict{conflictCounts[group.routine.id] !== 1 ? 's' : ''}
+                        </Link>
+                      )}
+                    </div>
+                  )}
+                  <div className="space-y-3">
+                    {group.items.map(i => <InstanceCard key={i.id} instance={i} />)}
+                  </div>
+                </div>
+              ))}
             </div>
           </section>
         )}
@@ -458,7 +504,7 @@ export default function DashboardClient({ instances: initial }: Props) {
                                   ? 'opacity-60'
                                   : ''
                             }`}
-                            style={{ backgroundColor: inst.task?.category?.color ?? '#6B7280' }}
+                            style={{ backgroundColor: (inst.task as any)?.routine?.color ?? inst.task?.category?.color ?? '#6B7280' }}
                           >
                             {isCompleted ? '✓ ' : ''}{inst.task?.name ?? '—'}
                           </div>

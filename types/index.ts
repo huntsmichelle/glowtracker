@@ -1,16 +1,73 @@
 // Shared TypeScript types for GlowTracker
 // Mirror the Supabase schema — keep in sync with migrations.
 //
-// Terminology (v1.2):
+// Terminology:
 //   Task     = the recurring series (e.g. "Hair Coloring every 6 weeks")
 //   Instance = a single scheduled occurrence of a task
-//   Routine  = RESERVED for Phase 2 (linked task groups) — not used yet
+//   Routine  = a named collection of related Tasks (Phase 2)
 
 export type InstanceStatus = 'upcoming' | 'due' | 'completed' | 'skipped' | 'snoozed' | 'projected';
 export type LinkResolution = 'do_both' | 'reset' | 'delay';
 export type TaskMode       = 'standard' | 'countdown';
 export type IntervalType   = 'exact' | 'range';
 export type IntervalUnit   = 'days' | 'weeks';
+
+// ─── Routine (Phase 2 — task group) ──────────────────────────────────────────
+
+export type ConflictResolution = 'ask' | 'do_both' | 'reset' | 'delay';
+export type DelayTarget        = 'a' | 'b';
+export type ConflictStatus     = 'pending' | 'resolved';
+
+export interface Routine {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  category: string | null;         // freeform label for grouping
+  color: string;
+  is_template: boolean;
+  is_public: boolean;
+  template_source_id: string | null;
+  created_at: string;
+  updated_at: string;
+  // joined
+  tasks?: Task[];
+}
+
+export interface RoutineTaskPair {
+  id: string;
+  routine_id: string;
+  user_id: string;
+  task_a_id: string;
+  task_b_id: string;
+  default_resolution: ConflictResolution;
+  default_delay_days: number | null;
+  delay_target: DelayTarget | null;
+  created_at: string;
+  // joined
+  task_a?: Task;
+  task_b?: Task;
+}
+
+export interface RoutineConflict {
+  id: string;
+  routine_id: string;
+  user_id: string;
+  pair_id: string;
+  instance_a_id: string;
+  instance_b_id: string;
+  conflict_date: string;
+  status: ConflictStatus;
+  resolution: ConflictResolution | null;
+  resolved_at: string | null;
+  resolved_by_delay_days: number | null;
+  resolved_delay_target: DelayTarget | null;
+  created_at: string;
+  // joined
+  pair?: RoutineTaskPair;
+  instance_a?: Instance;
+  instance_b?: Instance;
+}
 
 export interface Profile {
   id: string;
@@ -61,6 +118,8 @@ export interface Task {
   initial_anchor_date: string | null;
   // Reminder notes (shown on instance detail; will be sent with notifications)
   reminder_notes: string | null;
+  // Routine membership (Phase 2)
+  routine_id: string | null;
   // Service provider
   service_provider_id: string | null;
   created_at: string;
@@ -69,6 +128,7 @@ export interface Task {
   category?: Category;
   instances?: Instance[];
   service_provider?: ServiceProvider;
+  routine?: Routine;
 }
 
 export interface Instance {
@@ -87,6 +147,9 @@ export interface Instance {
   google_calendar_event_id: string | null;
   // Projection flag — true for forecast instances not yet promoted to upcoming
   is_projected: boolean;
+  // Calendar sync — populated on completion; used for Phase 6 Google Calendar export
+  calendar_event_date: string | null;
+  calendar_event_cost: number | null;
   // Cost tracking
   cost: number | null;
   // Event override
@@ -190,5 +253,5 @@ export interface SnoozeValues {
 // ─── Computed display helpers ─────────────────────────────────────────────────
 
 export interface InstanceWithTask extends Instance {
-  task: Task & { category?: Category };
+  task: Task & { category?: Category; routine?: Routine | null };
 }

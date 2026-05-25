@@ -1,10 +1,29 @@
-import { redirect } from 'next/navigation';
+import { createClient } from '@/lib/supabase/server';
+import { notFound, redirect } from 'next/navigation';
+import type { Routine } from '@/types';
+import RoutineEditClient from '@/components/RoutineEditClient';
+
+export const dynamic = 'force-dynamic';
 
 interface Props {
   params: Promise<{ id: string }>;
 }
 
-export default async function EditRoutineRedirect({ params }: Props) {
+export default async function EditRoutinePage({ params }: Props) {
   const { id } = await params;
-  redirect(`/tasks/${id}/edit`);
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) redirect('/login');
+
+  const { data: routine } = await supabase
+    .from('routines')
+    .select('*')
+    .eq('id', id)
+    .eq('user_id', user.id)
+    .single();
+
+  if (!routine) notFound();
+
+  return <RoutineEditClient routine={routine as Routine} />;
 }
