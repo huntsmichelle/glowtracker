@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import DashboardClient from '@/components/DashboardClient';
-import type { OccurrenceWithSeries } from '@/types';
+import type { TaskWithRoutine } from '@/types';
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -9,11 +9,11 @@ export default async function DashboardPage() {
 
   if (!user) redirect('/login');
 
-  const { data: occurrences } = await supabase
-    .from('occurrences')
+  const { data: tasks } = await supabase
+    .from('tasks')
     .select(`
       *,
-      series (
+      routine:routines (
         *,
         category:categories (*)
       )
@@ -22,5 +22,5 @@ export default async function DashboardPage() {
     .in('status', ['upcoming', 'due', 'snoozed'])
     .order('due_date_start', { ascending: true });
 
-  return <DashboardClient occurrences={(occurrences as OccurrenceWithSeries[]) ?? []} />;
+  return <DashboardClient tasks={(tasks as TaskWithRoutine[]) ?? []} />;
 }

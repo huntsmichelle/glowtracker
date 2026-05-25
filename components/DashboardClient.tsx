@@ -3,60 +3,59 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { format, parseISO, differenceInDays } from 'date-fns';
-import { createClient } from '@/lib/supabase/client';
-import { completeOccurrence, skipOccurrence, snoozeOccurrence, today, deriveStatus } from '@/lib/occurrenceEngine';
-import type { OccurrenceWithSeries, Series } from '@/types';
+import { completeTask, skipTask, snoozeTask, today, deriveStatus } from '@/lib/taskEngine';
+import type { TaskWithRoutine, Routine } from '@/types';
 
 interface Props {
-  occurrences: OccurrenceWithSeries[];
+  tasks: TaskWithRoutine[];
 }
 
-export default function DashboardClient({ occurrences: initial }: Props) {
-  const [occurrences, setOccurrences] = useState(initial);
-  const [completeModal, setCompleteModal] = useState<{ occ: OccurrenceWithSeries } | null>(null);
-  const [snoozeModal, setSnoozeModal] = useState<{ occ: OccurrenceWithSeries } | null>(null);
+export default function DashboardClient({ tasks: initial }: Props) {
+  const [tasks, setTasks]           = useState(initial);
+  const [completeModal, setCompleteModal] = useState<{ task: TaskWithRoutine } | null>(null);
+  const [snoozeModal, setSnoozeModal]     = useState<{ task: TaskWithRoutine } | null>(null);
   const [completionDate, setCompletionDate] = useState(format(today(), 'yyyy-MM-dd'));
-  const [snoozeDays, setSnoozeDays] = useState(3);
-  const [loading, setLoading] = useState<string | null>(null);
+  const [snoozeDays, setSnoozeDays]         = useState(3);
+  const [loading, setLoading]               = useState<string | null>(null);
 
-  function removeOccurrence(id: string) {
-    setOccurrences(prev => prev.filter(o => o.id !== id));
+  function removeTask(id: string) {
+    setTasks(prev => prev.filter(t => t.id !== id));
   }
 
-  async function handleComplete(occ: OccurrenceWithSeries) {
-    setLoading(occ.id);
+  async function handleComplete(task: TaskWithRoutine) {
+    setLoading(task.id);
     const date = new Date(completionDate + 'T00:00:00');
-    await completeOccurrence(occ.id, occ.series as Series, date);
-    removeOccurrence(occ.id);
+    await completeTask(task.id, task.routine as Routine, date);
+    removeTask(task.id);
     setCompleteModal(null);
     setLoading(null);
   }
 
-  async function handleSkip(occ: OccurrenceWithSeries) {
-    setLoading(occ.id);
-    await skipOccurrence(occ.id, occ.series as Series);
-    removeOccurrence(occ.id);
+  async function handleSkip(task: TaskWithRoutine) {
+    setLoading(task.id);
+    await skipTask(task.id, task.routine as Routine);
+    removeTask(task.id);
     setLoading(null);
   }
 
-  async function handleSnooze(occ: OccurrenceWithSeries) {
-    setLoading(occ.id);
-    await snoozeOccurrence(occ.id, snoozeDays, occ.due_date_end);
-    removeOccurrence(occ.id);
+  async function handleSnooze(task: TaskWithRoutine) {
+    setLoading(task.id);
+    await snoozeTask(task.id, snoozeDays, task.due_date_end);
+    removeTask(task.id);
     setSnoozeModal(null);
     setLoading(null);
   }
 
-  const due = occurrences.filter(o => deriveStatus(o) === 'due');
-  const upcoming = occurrences.filter(o => deriveStatus(o) !== 'due');
+  const due      = tasks.filter(t => deriveStatus(t) === 'due');
+  const upcoming = tasks.filter(t => deriveStatus(t) !== 'due');
 
-  if (occurrences.length === 0) {
+  if (tasks.length === 0) {
     return (
       <div className="text-center py-16">
         <div className="text-4xl mb-4">✨</div>
         <h2 className="text-xl font-semibold text-gray-700 mb-2">All caught up!</h2>
         <p className="text-gray-400 text-sm mb-6">No upcoming routines right now.</p>
-        <Link href="/series/new" className="inline-block bg-pink-500 text-white text-sm font-medium rounded-lg px-4 py-2.5">
+        <Link href="/routines/new" className="inline-block bg-pink-500 text-white text-sm font-medium rounded-lg px-4 py-2.5">
           Add a routine
         </Link>
       </div>
@@ -67,7 +66,7 @@ export default function DashboardClient({ occurrences: initial }: Props) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-gray-800">Your Routines</h1>
-        <Link href="/series/new" className="text-sm bg-pink-500 text-white font-medium rounded-lg px-3 py-1.5">
+        <Link href="/routines/new" className="text-sm bg-pink-500 text-white font-medium rounded-lg px-3 py-1.5">
           + New
         </Link>
       </div>
@@ -76,14 +75,14 @@ export default function DashboardClient({ occurrences: initial }: Props) {
         <section>
           <h2 className="text-xs font-semibold text-red-500 uppercase tracking-wide mb-3">Due Now</h2>
           <div className="space-y-3">
-            {due.map(occ => (
-              <OccurrenceCard
-                key={occ.id}
-                occ={occ}
-                loading={loading === occ.id}
-                onComplete={() => { setCompletionDate(format(today(), 'yyyy-MM-dd')); setCompleteModal({ occ }); }}
-                onSkip={() => handleSkip(occ)}
-                onSnooze={() => { setSnoozeDays(3); setSnoozeModal({ occ }); }}
+            {due.map(task => (
+              <TaskCard
+                key={task.id}
+                task={task}
+                loading={loading === task.id}
+                onComplete={() => { setCompletionDate(format(today(), 'yyyy-MM-dd')); setCompleteModal({ task }); }}
+                onSkip={() => handleSkip(task)}
+                onSnooze={() => { setSnoozeDays(3); setSnoozeModal({ task }); }}
               />
             ))}
           </div>
@@ -94,14 +93,14 @@ export default function DashboardClient({ occurrences: initial }: Props) {
         <section>
           <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Upcoming</h2>
           <div className="space-y-3">
-            {upcoming.map(occ => (
-              <OccurrenceCard
-                key={occ.id}
-                occ={occ}
-                loading={loading === occ.id}
-                onComplete={() => { setCompletionDate(format(today(), 'yyyy-MM-dd')); setCompleteModal({ occ }); }}
-                onSkip={() => handleSkip(occ)}
-                onSnooze={() => { setSnoozeDays(3); setSnoozeModal({ occ }); }}
+            {upcoming.map(task => (
+              <TaskCard
+                key={task.id}
+                task={task}
+                loading={loading === task.id}
+                onComplete={() => { setCompletionDate(format(today(), 'yyyy-MM-dd')); setCompleteModal({ task }); }}
+                onSkip={() => handleSkip(task)}
+                onSnooze={() => { setSnoozeDays(3); setSnoozeModal({ task }); }}
               />
             ))}
           </div>
@@ -112,7 +111,7 @@ export default function DashboardClient({ occurrences: initial }: Props) {
       {completeModal && (
         <Modal onClose={() => setCompleteModal(null)}>
           <h3 className="font-semibold text-gray-800 mb-1">Log completion</h3>
-          <p className="text-sm text-gray-500 mb-4">{completeModal.occ.series?.name}</p>
+          <p className="text-sm text-gray-500 mb-4">{completeModal.task.routine?.name}</p>
           <label className="block text-sm font-medium text-gray-700 mb-1">Actual date</label>
           <input
             type="date"
@@ -129,11 +128,11 @@ export default function DashboardClient({ occurrences: initial }: Props) {
               Cancel
             </button>
             <button
-              onClick={() => handleComplete(completeModal.occ)}
-              disabled={loading === completeModal.occ.id}
+              onClick={() => handleComplete(completeModal.task)}
+              disabled={loading === completeModal.task.id}
               className="flex-1 bg-green-500 text-white text-sm font-medium rounded-lg py-2 disabled:opacity-50"
             >
-              {loading === completeModal.occ.id ? 'Saving…' : 'Mark complete'}
+              {loading === completeModal.task.id ? 'Saving…' : 'Mark complete'}
             </button>
           </div>
         </Modal>
@@ -143,7 +142,7 @@ export default function DashboardClient({ occurrences: initial }: Props) {
       {snoozeModal && (
         <Modal onClose={() => setSnoozeModal(null)}>
           <h3 className="font-semibold text-gray-800 mb-1">Snooze</h3>
-          <p className="text-sm text-gray-500 mb-4">{snoozeModal.occ.series?.name}</p>
+          <p className="text-sm text-gray-500 mb-4">{snoozeModal.task.routine?.name}</p>
           <label className="block text-sm font-medium text-gray-700 mb-1">Days to snooze</label>
           <input
             type="number"
@@ -161,11 +160,11 @@ export default function DashboardClient({ occurrences: initial }: Props) {
               Cancel
             </button>
             <button
-              onClick={() => handleSnooze(snoozeModal.occ)}
-              disabled={loading === snoozeModal.occ.id}
+              onClick={() => handleSnooze(snoozeModal.task)}
+              disabled={loading === snoozeModal.task.id}
               className="flex-1 bg-amber-500 text-white text-sm font-medium rounded-lg py-2 disabled:opacity-50"
             >
-              {loading === snoozeModal.occ.id ? 'Saving…' : 'Snooze'}
+              {loading === snoozeModal.task.id ? 'Saving…' : 'Snooze'}
             </button>
           </div>
         </Modal>
@@ -174,37 +173,38 @@ export default function DashboardClient({ occurrences: initial }: Props) {
   );
 }
 
-// ─── OccurrenceCard ───────────────────────────────────────────────────────────
+// ─── TaskCard ─────────────────────────────────────────────────────────────────
 
 interface CardProps {
-  occ: OccurrenceWithSeries;
+  task: TaskWithRoutine;
   loading: boolean;
   onComplete: () => void;
   onSkip: () => void;
   onSnooze: () => void;
 }
 
-function OccurrenceCard({ occ, loading, onComplete, onSkip, onSnooze }: CardProps) {
-  const status = deriveStatus(occ);
-  const daysUntil = differenceInDays(parseISO(occ.due_date_start), today());
-  const isOverdue = differenceInDays(today(), parseISO(occ.due_date_end)) > 0;
+function TaskCard({ task, loading, onComplete, onSkip, onSnooze }: CardProps) {
+  const status    = deriveStatus(task);
+  const daysUntil = differenceInDays(parseISO(task.due_date_start), today());
+  const isOverdue = differenceInDays(today(), parseISO(task.due_date_end)) > 0;
 
-  const dateLabel = `${format(parseISO(occ.due_date_start), 'MMM d')} – ${format(parseISO(occ.due_date_end), 'MMM d')}`;
+  const dateLabel = `${format(parseISO(task.due_date_start), 'MMM d')} – ${format(parseISO(task.due_date_end), 'MMM d')}`;
 
   let urgencyLabel: string;
   if (isOverdue) {
-    urgencyLabel = `Overdue by ${differenceInDays(today(), parseISO(occ.due_date_end))}d`;
+    urgencyLabel = `Overdue by ${differenceInDays(today(), parseISO(task.due_date_end))}d`;
   } else if (daysUntil <= 0) {
     urgencyLabel = 'Due now';
   } else {
     urgencyLabel = `In ${daysUntil} day${daysUntil === 1 ? '' : 's'}`;
   }
 
-  const categoryColor = occ.series?.category?.color ?? '#6B7280';
+  const categoryColor = task.routine?.category?.color ?? '#6B7280';
+  const isCountdown   = task.routine?.mode === 'countdown';
 
   return (
     <Link
-      href={`/occurrences/${occ.id}`}
+      href={`/tasks/${task.id}`}
       className="block bg-white rounded-xl border border-gray-100 shadow-sm p-4 hover:border-pink-200 transition-colors"
     >
       <div className="flex items-start justify-between gap-2 mb-3">
@@ -214,8 +214,13 @@ function OccurrenceCard({ occ, loading, onComplete, onSkip, onSnooze }: CardProp
             style={{ backgroundColor: categoryColor }}
           />
           <div className="min-w-0">
-            <p className="font-medium text-gray-800 text-sm truncate">{occ.series?.name}</p>
-            <p className="text-xs text-gray-400">{occ.series?.category?.name}</p>
+            <p className="font-medium text-gray-800 text-sm truncate">{task.routine?.name}</p>
+            <p className="text-xs text-gray-400">
+              {task.routine?.category?.name ?? ''}
+              {isCountdown && task.routine?.target_label && (
+                <span className="ml-1 text-purple-400">→ {task.routine.target_label}</span>
+              )}
+            </p>
           </div>
         </div>
         <div className="text-right flex-shrink-0">
