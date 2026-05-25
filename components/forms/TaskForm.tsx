@@ -75,8 +75,9 @@ export default function TaskForm({
   const [name, setName]               = useState(initialValues?.name ?? '');
   const [categoryId, setCategoryId]   = useState(initialValues?.category_id ?? '');
   const [description, setDescription] = useState(initialValues?.description ?? '');
-  const [reminderDays, setReminderDays] = useState(initialValues?.default_reminder_days ?? 2);
-  const [defaultCost, setDefaultCost]   = useState(initialValues?.default_cost ?? '');
+  const [reminderDays, setReminderDays]     = useState(initialValues?.default_reminder_days ?? 2);
+  const [defaultCost, setDefaultCost]       = useState(initialValues?.default_cost ?? '');
+  const [reminderNotes, setReminderNotes]   = useState(initialValues?.reminder_notes ?? '');
 
   // ── Interval ──────────────────────────────────────────────────────────────
   const [intervalType, setIntervalType] = useState<IntervalType>(
@@ -300,6 +301,7 @@ export default function TaskForm({
       interval_max_days:    intervalMaxDays(),
       default_reminder_days: reminderDays,
       default_cost:         defaultCost !== '' ? Number(defaultCost) : null,
+      reminder_notes:       reminderNotes.trim() || null,
       user_id:              userId,
       mode,
       initial_anchor_date:
@@ -579,6 +581,17 @@ export default function TaskForm({
             />
           </div>
           <p className="text-xs text-gray-400 mt-1">Pre-fills the cost field when you log a completion. Optional.</p>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Reminder notes</label>
+          <textarea
+            rows={3} value={reminderNotes}
+            onChange={e => setReminderNotes(e.target.value)}
+            placeholder="Notes to include with reminders (e.g. don't shave beforehand)..."
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 resize-none"
+          />
+          <p className="text-xs text-gray-400 mt-1">Shown on the instance detail when it's due. Optional.</p>
         </div>
 
         <div>

@@ -12,20 +12,20 @@
  *   All instances are pre-generated at creation time, scheduled
  *   backward from a fixed target_date. When an instance is
  *   completed, the remaining instances are recalculated backward
- *   from the target — NOT forward from the completion date.
+ *   from the target -- NOT forward from the completion date.
  *   The target date is always the anchor.
  *
  *   After the target date passes:
- *     continue_after_target = true  → switches to standard mode;
+ *     continue_after_target = true  -> switches to standard mode;
  *       first post-target instance is due at target_date + interval
- *     continue_after_target = false → task is deactivated
+ *     continue_after_target = false -> task is deactivated
  *
  * EVENT OVERRIDE (one-off date adjustment)
  *   A single upcoming instance can be moved to align with a future
  *   event. The instance is updated in place: its dates change to
- *   (event_date − days_before_event) and it is flagged with the
+ *   (event_date - days_before_event) and it is flagged with the
  *   event details. After completion the task resumes its normal
- *   cadence — unless override_next_date is set, in which case the
+ *   cadence -- unless override_next_date is set, in which case the
  *   next instance is anchored to that date instead.
  */
 
@@ -33,9 +33,17 @@ import { addDays, format, parseISO, isAfter, isBefore } from 'date-fns';
 import { createClient } from '@/lib/supabase/client';
 import type { Task, Instance, InstanceStatus } from '@/types';
 
-const supabase = createClient();
+// Lazy singleton -- NOT evaluated at module import time.
+// Server components import pure helpers (deriveStatus etc.) from this module;
+// calling createClient() at the top level would run during the build step
+// before environment variables are injected, crashing the Vercel build.
+let _client: ReturnType<typeof createClient> | null = null;
+function db() {
+  if (!_client) _client = createClient();
+  return _client;
+}
 
-// ─── Date helpers ─────────────────────────────────────────────────────────────
+// --- Date helpers ------------------------------------------------------------
 
 export function today(): Date {
   return new Date(new Date().toDateString()); // strips time component
@@ -45,7 +53,7 @@ export function toISODate(d: Date): string {
   return format(d, 'yyyy-MM-dd');
 }
 
-// ─── Status derivation ────────────────────────────────────────────────────────
+// --- Status derivation -------------------------------------------------------
 
 /**
  * Derives the display status for an instance based on current date.
@@ -77,7 +85,7 @@ export function daysUntilDue(instance: Instance): number {
   return Math.round((start.getTime() - t.getTime()) / 86_400_000);
 }
 
-// ─── Window calculation ───────────────────────────────────────────────────────
+// --- Window calculation ------------------------------------------------------
 
 /**
  * Calculates the due window for the NEXT instance given an anchor date
@@ -97,9 +105,9 @@ export function calculateNextWindow(
  * Calculates all instance windows for a countdown task, ordered
  * oldest-first (chronological).
  *
- * For each n = 0, 1, 2, …:
- *   due_date_end   = target − days_before_target − n × interval_min_days
- *   due_date_start = due_date_end − (interval_max_days − interval_min_days)
+ * For each n = 0, 1, 2, ...:
+ *   due_date_end   = target - days_before_target - n * interval_min_days
+ *   due_date_start = due_date_end - (interval_max_days - interval_min_days)
  *
  * Stops when due_date_end would be in the past.
  */
@@ -133,7 +141,7 @@ export function calculateCountdownWindows(
   return windows.reverse(); // chronological (earliest first)
 }
 
-// ─── Instance creation ────────────────────────────────────────────────────────
+// --- Instance creation -------------------------------------------------------
 
 /**
  * Creates the first instance for a newly created STANDARD task.
@@ -147,7 +155,7 @@ export async function createFirstInstance(task: Task): Promise<Instance | null> 
 
   const window = calculateNextWindow(anchor, task);
 
-  const { data, error } = await supabase
+  const { data, error } = await db()
     .from('instances')
     .insert({
       task_id:              task.id,
@@ -186,7 +194,7 @@ export async function generateCountdownInstances(task: Task): Promise<Instance[]
     status:               'upcoming' as InstanceStatus,
   }));
 
-  const { data, error } = await supabase.from('instances').insert(inserts).select();
+  const { data, error } = await db().from('instances').insert(inserts).select();
 
   if (error) {
     console.error('generateCountdownInstances error:', error);
@@ -195,7 +203,7 @@ export async function generateCountdownInstances(task: Task): Promise<Instance[]
   return data;
 }
 
-// ─── Instance actions ─────────────────────────────────────────────────────────
+// --- Instance actions --------------------------------------------------------
 
 /**
  * Marks an instance as completed and schedules the next one.
@@ -224,7 +232,7 @@ export async function completeInstance(
   };
   if (cost !== undefined) updatePayload.cost = cost;
 
-  const { data: updated, error: updateErr } = await supabase
+  const { data: updated, error: updateErr } = await db()
     .from('instances')
     .update(updatePayload)
     .eq('id', instanceId)
@@ -241,7 +249,7 @@ export async function completeInstance(
   }
 
   // If the completed instance had override_next_date set, use that as the
-  // scheduling anchor so the next instance is placed at the user's chosen date.
+  // scheduling anchor so the next instance starts from the user's chosen date.
   const anchor = updated?.override_next_date
     ? parseISO(updated.override_next_date)
     : actualDate;
@@ -254,14 +262,14 @@ export async function completeInstance(
  * Marks an instance as skipped.
  *
  * Standard mode: creates the next instance anchored to today.
- * Countdown mode: just marks as skipped — other pre-generated
+ * Countdown mode: just marks as skipped -- other pre-generated
  *   instances already exist; no new one is needed.
  */
 export async function skipInstance(
   instanceId: string,
   task: Task
 ): Promise<{ updated: Instance | null; next: Instance | null }> {
-  const { data: updated, error } = await supabase
+  const { data: updated, error } = await db()
     .from('instances')
     .update({ status: 'skipped' })
     .eq('id', instanceId)
@@ -292,7 +300,7 @@ export async function snoozeInstance(
 ): Promise<Instance | null> {
   const newSnoozeUntil = toISODate(addDays(parseISO(currentDueDateEnd), days));
 
-  const { data, error } = await supabase
+  const { data, error } = await db()
     .from('instances')
     .update({ status: 'snoozed', snooze_until: newSnoozeUntil })
     .eq('id', instanceId)
@@ -306,23 +314,23 @@ export async function snoozeInstance(
   return data;
 }
 
-// ─── Event override ───────────────────────────────────────────────────────────
+// --- Event override ----------------------------------------------------------
 
 /**
  * Adjusts a specific instance to align with a one-time event.
  *
  * The instance's due window is collapsed to the single calculated date
- * (event_date − days_before_event). The original task cadence is NOT
- * affected — after this instance is completed, the next instance is
+ * (event_date - days_before_event). The original task cadence is NOT
+ * affected -- after this instance is completed, the next instance is
  * scheduled normally from the actual completion date (or from
  * override_next_date if the user chose a custom post-event anchor).
  *
- * @param instanceId         - The instance to adjust (must be upcoming/due)
- * @param eventName          - User-readable label, e.g. "Vacation to Italy"
- * @param eventDate          - ISO date of the event itself
- * @param daysBefore         - How many days before the event to do the task
- * @param overrideNextDate   - If resume_normal_cadence=false, the explicit
- *                             anchor for the following instance
+ * @param instanceId       - The instance to adjust (must be upcoming/due)
+ * @param eventName        - User-readable label, e.g. "Vacation to Italy"
+ * @param eventDate        - ISO date of the event itself
+ * @param daysBefore       - How many days before the event to do the task
+ * @param overrideNextDate - If resume_normal_cadence=false, the explicit
+ *                           anchor for the following instance
  */
 export async function createEventOverride(
   instanceId: string,
@@ -333,7 +341,7 @@ export async function createEventOverride(
 ): Promise<Instance | null> {
   const adjustedDate = toISODate(addDays(parseISO(eventDate), -daysBefore));
 
-  const { data, error } = await supabase
+  const { data, error } = await db()
     .from('instances')
     .update({
       due_date_start:     adjustedDate,
@@ -355,28 +363,27 @@ export async function createEventOverride(
   return data;
 }
 
-// ─── Delete operations ────────────────────────────────────────────────────────
+// --- Delete operations -------------------------------------------------------
 
 /**
  * Deletes a single instance and generates the next one for standard tasks.
  *
  * Treated like a skip: the next instance is anchored to the deleted
  * instance's due_date_end so the cadence continues from where it would
- * have been.  For countdown tasks, the pre-generated instances already
- * handle the schedule — no new one is created.
+ * have been. For countdown tasks, the pre-generated instances already
+ * handle the schedule -- no new one is created.
  */
 export async function deleteInstance(
   instanceId: string,
   task: Task
 ): Promise<{ next: Instance | null }> {
-  // Fetch before deleting so we know the anchor date
-  const { data: instance } = await supabase
+  const { data: instance } = await db()
     .from('instances')
     .select('due_date_end, status')
     .eq('id', instanceId)
     .single();
 
-  const { error } = await supabase
+  const { error } = await db()
     .from('instances')
     .delete()
     .eq('id', instanceId);
@@ -390,7 +397,6 @@ export async function deleteInstance(
     return { next: null };
   }
 
-  // Only generate the next instance if there isn't already one upcoming/snoozed
   const anchor = parseISO(instance.due_date_end);
   const next = await createNextInstance(task, anchor);
   return { next };
@@ -401,9 +407,9 @@ export async function deleteInstance(
  * Instances are deleted first in case the DB FK is not set to CASCADE.
  */
 export async function deleteTask(taskId: string): Promise<boolean> {
-  await supabase.from('instances').delete().eq('task_id', taskId);
-  await supabase.from('task_products').delete().eq('task_id', taskId);
-  const { error } = await supabase.from('tasks').delete().eq('id', taskId);
+  await db().from('instances').delete().eq('task_id', taskId);
+  await db().from('task_products').delete().eq('task_id', taskId);
+  const { error } = await db().from('tasks').delete().eq('id', taskId);
   if (error) {
     console.error('deleteTask error:', error);
     return false;
@@ -411,7 +417,7 @@ export async function deleteTask(taskId: string): Promise<boolean> {
   return true;
 }
 
-// ─── Internal helpers ─────────────────────────────────────────────────────────
+// --- Internal helpers --------------------------------------------------------
 
 /**
  * Inserts the next instance for a standard-mode task.
@@ -421,7 +427,7 @@ async function createNextInstance(
   task: Task,
   anchorDate: Date
 ): Promise<Instance | null> {
-  const { data: existing } = await supabase
+  const { data: existing } = await db()
     .from('instances')
     .select('id')
     .eq('task_id', task.id)
@@ -435,7 +441,7 @@ async function createNextInstance(
 
   const window = calculateNextWindow(anchorDate, task);
 
-  const { data, error } = await supabase
+  const { data, error } = await db()
     .from('instances')
     .insert({
       task_id:              task.id,
@@ -464,7 +470,7 @@ async function createNextInstance(
 async function handlePostCompleteCountdown(
   task: Task
 ): Promise<{ updated: Instance | null; next: Instance | null }> {
-  await supabase
+  await db()
     .from('instances')
     .delete()
     .eq('task_id', task.id)
@@ -480,7 +486,7 @@ async function handlePostCompleteCountdown(
       const next = await createNextInstance({ ...task, mode: 'standard' }, target);
       return { updated: null, next };
     } else {
-      await supabase.from('tasks').update({ is_active: false }).eq('id', task.id);
+      await db().from('tasks').update({ is_active: false }).eq('id', task.id);
       return { updated: null, next: null };
     }
   }

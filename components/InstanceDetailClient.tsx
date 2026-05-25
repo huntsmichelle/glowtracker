@@ -200,6 +200,13 @@ export default function InstanceDetailClient({ instance: initial }: Props) {
             {task.description}
           </div>
         )}
+
+        {task.reminder_notes && (
+          <div className="border border-amber-200 bg-amber-50 rounded-xl p-3 space-y-1">
+            <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide">Reminder notes</p>
+            <p className="text-sm text-amber-800 whitespace-pre-wrap">{task.reminder_notes}</p>
+          </div>
+        )}
       </div>
 
       {/* Action buttons */}

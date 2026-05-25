@@ -3,6 +3,8 @@ import { notFound, redirect } from 'next/navigation';
 import InstanceDetailClient from '@/components/InstanceDetailClient';
 import type { InstanceWithTask } from '@/types';
 
+export const dynamic = 'force-dynamic';
+
 interface Props {
   params: Promise<{ id: string }>;
 }

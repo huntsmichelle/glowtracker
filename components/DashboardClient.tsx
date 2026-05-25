@@ -236,30 +236,34 @@ export default function DashboardClient({ instances: initial }: Props) {
   function InstanceMenuButton({ instance }: { instance: InstanceWithTask }) {
     const isOpen = openMenu === instance.id;
     return (
-      <div className="relative flex-shrink-0">
+      <div className="relative">
         <button
+          type="button"
           onClick={e => { e.preventDefault(); e.stopPropagation(); setOpenMenu(isOpen ? null : instance.id); }}
-          className="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
+          className="w-11 h-11 flex items-center justify-center text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
         >
           ⋮
         </button>
         {isOpen && (
-          <div className="absolute right-0 top-8 z-50 bg-white rounded-xl shadow-lg border border-gray-100 min-w-[190px] py-1">
+          <div className="absolute right-0 top-12 z-50 bg-white rounded-xl shadow-lg border border-gray-100 min-w-[190px] py-1">
             <button
-              onClick={e => { e.stopPropagation(); openAdjustModal(instance); }}
+              type="button"
+              onClick={e => { e.preventDefault(); e.stopPropagation(); openAdjustModal(instance); }}
               className="w-full text-left px-4 py-2.5 text-sm text-purple-600 hover:bg-purple-50"
             >
               Adjust for event…
             </button>
             <hr className="border-gray-100 my-1" />
             <button
-              onClick={e => { e.stopPropagation(); setOpenMenu(null); setDeleteInstanceModal({ instance }); }}
+              type="button"
+              onClick={e => { e.preventDefault(); e.stopPropagation(); setOpenMenu(null); setDeleteInstanceModal({ instance }); }}
               className="w-full text-left px-4 py-2.5 text-sm text-red-500 hover:bg-red-50"
             >
               Delete this instance
             </button>
             <button
-              onClick={e => { e.stopPropagation(); setOpenMenu(null); setDeleteTaskModal({ instance }); }}
+              type="button"
+              onClick={e => { e.preventDefault(); e.stopPropagation(); setOpenMenu(null); setDeleteTaskModal({ instance }); }}
               className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 font-medium"
             >
               Delete entire task
@@ -286,8 +290,12 @@ export default function DashboardClient({ instances: initial }: Props) {
     const isLoading = loading === instance.id;
 
     return (
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 hover:border-pink-200 transition-colors">
-        <Link href={`/instances/${instance.id}`} className="block mb-3">
+      <div className="relative bg-white rounded-xl border border-gray-100 shadow-sm p-4 hover:border-pink-200 transition-colors">
+        {/* Menu button — outside Link to prevent navigation on click */}
+        <div className="absolute top-1 right-1 z-10">
+          {InstanceMenuButton({ instance })}
+        </div>
+        <Link href={`/instances/${instance.id}`} className="block mb-3 pr-10">
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: categoryColor }} />
@@ -304,17 +312,14 @@ export default function DashboardClient({ instances: initial }: Props) {
                 </p>
               </div>
             </div>
-            <div className="flex items-start gap-1 flex-shrink-0">
-              <div className="text-right">
-                <p className="text-xs text-gray-500">{dateLabel}</p>
-                <p className={`text-xs font-medium ${isOverdue ? 'text-red-500' : status === 'due' ? 'text-amber-500' : 'text-gray-400'}`}>
-                  {urgencyLabel}
-                </p>
-                {instance.task?.default_cost != null && (
-                  <p className="text-xs text-gray-300">${instance.task.default_cost.toFixed(2)}</p>
-                )}
-              </div>
-              {InstanceMenuButton({ instance })}
+            <div className="text-right flex-shrink-0">
+              <p className="text-xs text-gray-500">{dateLabel}</p>
+              <p className={`text-xs font-medium ${isOverdue ? 'text-red-500' : status === 'due' ? 'text-amber-500' : 'text-gray-400'}`}>
+                {urgencyLabel}
+              </p>
+              {instance.task?.default_cost != null && (
+                <p className="text-xs text-gray-300">${instance.task.default_cost.toFixed(2)}</p>
+              )}
             </div>
           </div>
         </Link>

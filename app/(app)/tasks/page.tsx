@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import type { Task, Category } from '@/types';
 
+export const dynamic = 'force-dynamic';
+
 export default async function TasksListPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();

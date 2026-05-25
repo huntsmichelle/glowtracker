@@ -59,6 +59,8 @@ export interface Task {
   days_before_target: number | null;
   continue_after_target: boolean;
   initial_anchor_date: string | null;
+  // Reminder notes (shown on instance detail; will be sent with notifications)
+  reminder_notes: string | null;
   // Service provider
   service_provider_id: string | null;
   created_at: string;
@@ -155,6 +157,7 @@ export interface TaskFormValues {
   description: string;
   mode: TaskMode;
   default_cost: string;           // currency string, empty = no default
+  reminder_notes: string;
   // Interval — stored as days in DB; UI lets user choose unit and exact vs range
   intervalType: IntervalType;
   intervalMin: number;

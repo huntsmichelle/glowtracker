@@ -5,6 +5,8 @@ import { format, parseISO } from 'date-fns';
 import type { Task, Instance, Category } from '@/types';
 import { deriveStatus } from '@/lib/instanceEngine';
 
+export const dynamic = 'force-dynamic';
+
 interface Props {
   params: Promise<{ id: string }>;
 }

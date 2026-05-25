@@ -3,6 +3,8 @@ import { notFound, redirect } from 'next/navigation';
 import TaskForm from '@/components/forms/TaskForm';
 import type { Task, Category, TaskFormValues, ProductFormEntry, ServiceProviderFormEntry } from '@/types';
 
+export const dynamic = 'force-dynamic';
+
 interface Props {
   params: Promise<{ id: string }>;
 }
@@ -48,6 +50,7 @@ export default async function EditTaskPage({ params }: Props) {
     category_id:           t.category_id ?? '',
     description:           t.description ?? '',
     default_cost:          t.default_cost != null ? String(t.default_cost) : '',
+    reminder_notes:        t.reminder_notes ?? '',
     intervalType:          isExact ? 'exact' : 'range',
     intervalMin:           t.interval_min_days,
     intervalMax:           t.interval_max_days,
