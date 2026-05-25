@@ -119,8 +119,7 @@ export default function DashboardClient({ instances: initial }: Props) {
   const [completeModal, setCompleteModal]           = useState<{ instance: InstanceWithTask } | null>(null);
   const [snoozeModal, setSnoozeModal]               = useState<{ instance: InstanceWithTask } | null>(null);
   const [adjustModal, setAdjustModal]               = useState<{ instance: InstanceWithTask } | null>(null);
-  const [deleteInstanceModal, setDeleteInstanceModal] = useState<{ instance: InstanceWithTask } | null>(null);
-  const [deleteTaskModal, setDeleteTaskModal]       = useState<{ instance: InstanceWithTask } | null>(null);
+  const [deleteModal, setDeleteModal] = useState<{ instance: InstanceWithTask } | null>(null);
 
   const [completionDate, setCompletionDate] = useState(format(today(), 'yyyy-MM-dd'));
   const [completionCost, setCompletionCost] = useState('');
@@ -134,14 +133,10 @@ export default function DashboardClient({ instances: initial }: Props) {
   const [resumeNormal, setResumeNormal]   = useState(true);
   const [overrideNextDate, setOverrideNextDate] = useState('');
 
-  // 3-dot menu
-  const [openMenu, setOpenMenu] = useState<string | null>(null);
-
   function openCompleteModal(instance: InstanceWithTask) {
     setCompletionDate(format(today(), 'yyyy-MM-dd'));
     setCompletionCost(instance.task?.default_cost != null ? String(instance.task.default_cost) : '');
     setCompleteModal({ instance });
-    setOpenMenu(null);
   }
 
   function openAdjustModal(instance: InstanceWithTask) {
@@ -151,7 +146,6 @@ export default function DashboardClient({ instances: initial }: Props) {
     setResumeNormal(true);
     setOverrideNextDate('');
     setAdjustModal({ instance });
-    setOpenMenu(null);
   }
 
   // ── Action handlers ────────────────────────────────────────────────────────
@@ -195,7 +189,7 @@ export default function DashboardClient({ instances: initial }: Props) {
     setLoading(instance.id);
     await deleteInstance(instance.id, instance.task as Task);
     removeInstance(instance.id);
-    setDeleteInstanceModal(null);
+    setDeleteModal(null);
     setLoading(null);
   }
 
@@ -203,7 +197,7 @@ export default function DashboardClient({ instances: initial }: Props) {
     setLoading(instance.id);
     await deleteTask(instance.task_id);
     setInstances(prev => prev.filter(i => i.task_id !== instance.task_id));
-    setDeleteTaskModal(null);
+    setDeleteModal(null);
     setLoading(null);
   }
 
@@ -233,47 +227,6 @@ export default function DashboardClient({ instances: initial }: Props) {
     );
   }
 
-  function InstanceMenuButton({ instance }: { instance: InstanceWithTask }) {
-    const isOpen = openMenu === instance.id;
-    return (
-      <div className="relative">
-        <button
-          type="button"
-          onClick={e => { e.preventDefault(); e.stopPropagation(); setOpenMenu(isOpen ? null : instance.id); }}
-          className="w-11 h-11 flex items-center justify-center text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
-        >
-          ⋮
-        </button>
-        {isOpen && (
-          <div className="absolute right-0 top-12 z-50 bg-white rounded-xl shadow-lg border border-gray-100 min-w-[190px] py-1">
-            <button
-              type="button"
-              onClick={e => { e.preventDefault(); e.stopPropagation(); openAdjustModal(instance); }}
-              className="w-full text-left px-4 py-2.5 text-sm text-purple-600 hover:bg-purple-50"
-            >
-              Adjust for event…
-            </button>
-            <hr className="border-gray-100 my-1" />
-            <button
-              type="button"
-              onClick={e => { e.preventDefault(); e.stopPropagation(); setOpenMenu(null); setDeleteInstanceModal({ instance }); }}
-              className="w-full text-left px-4 py-2.5 text-sm text-red-500 hover:bg-red-50"
-            >
-              Delete this instance
-            </button>
-            <button
-              type="button"
-              onClick={e => { e.preventDefault(); e.stopPropagation(); setOpenMenu(null); setDeleteTaskModal({ instance }); }}
-              className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 font-medium"
-            >
-              Delete entire task
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  }
-
   function InstanceCard({ instance }: { instance: InstanceWithTask }) {
     const status    = deriveStatus(instance);
     const daysUntil = differenceInDays(parseISO(instance.due_date_start), today());
@@ -290,12 +243,8 @@ export default function DashboardClient({ instances: initial }: Props) {
     const isLoading = loading === instance.id;
 
     return (
-      <div className="relative bg-white rounded-xl border border-gray-100 shadow-sm p-4 hover:border-pink-200 transition-colors">
-        {/* Menu button — outside Link to prevent navigation on click */}
-        <div className="absolute top-1 right-1 z-10">
-          {InstanceMenuButton({ instance })}
-        </div>
-        <Link href={`/instances/${instance.id}`} className="block mb-3 pr-10">
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 hover:border-pink-200 transition-colors">
+        <Link href={`/instances/${instance.id}`} className="block mb-3">
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: categoryColor }} />
@@ -324,27 +273,41 @@ export default function DashboardClient({ instances: initial }: Props) {
           </div>
         </Link>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-1.5">
           <button
-            onClick={() => openCompleteModal(instance)}
+            onClick={e => { e.stopPropagation(); openCompleteModal(instance); }}
             disabled={isLoading}
-            className="flex-1 bg-green-50 hover:bg-green-100 text-green-700 text-xs font-medium rounded-lg py-1.5 transition-colors disabled:opacity-50"
+            className="flex-1 min-w-[60px] min-h-[44px] bg-green-500 hover:bg-green-600 text-white text-xs font-semibold rounded-lg px-2 transition-colors disabled:opacity-50"
           >
             Done
           </button>
           <button
-            onClick={() => handleSkip(instance)}
+            onClick={e => { e.stopPropagation(); handleSkip(instance); }}
             disabled={isLoading}
-            className="flex-1 bg-gray-50 hover:bg-gray-100 text-gray-500 text-xs font-medium rounded-lg py-1.5 transition-colors disabled:opacity-50"
+            className="flex-1 min-w-[50px] min-h-[44px] bg-gray-50 hover:bg-gray-100 text-gray-500 text-xs font-medium rounded-lg px-2 transition-colors disabled:opacity-50"
           >
             Skip
           </button>
           <button
-            onClick={() => { setSnoozeDays(3); setSnoozeModal({ instance }); }}
+            onClick={e => { e.stopPropagation(); setSnoozeDays(3); setSnoozeModal({ instance }); }}
             disabled={isLoading}
-            className="flex-1 bg-amber-50 hover:bg-amber-100 text-amber-600 text-xs font-medium rounded-lg py-1.5 transition-colors disabled:opacity-50"
+            className="flex-1 min-w-[60px] min-h-[44px] bg-amber-50 hover:bg-amber-100 text-amber-600 text-xs font-medium rounded-lg px-2 transition-colors disabled:opacity-50"
           >
             Snooze
+          </button>
+          <button
+            onClick={e => { e.stopPropagation(); openAdjustModal(instance); }}
+            disabled={isLoading}
+            className="flex-1 min-w-[110px] min-h-[44px] bg-purple-50 hover:bg-purple-100 text-purple-600 text-xs font-medium rounded-lg px-2 transition-colors disabled:opacity-50"
+          >
+            Adjust for event
+          </button>
+          <button
+            onClick={e => { e.stopPropagation(); setDeleteModal({ instance }); }}
+            disabled={isLoading}
+            className="flex-1 min-w-[60px] min-h-[44px] bg-red-50 hover:bg-red-100 text-red-500 text-xs font-medium rounded-lg px-2 transition-colors disabled:opacity-50"
+          >
+            Delete
           </button>
         </div>
       </div>
@@ -761,50 +724,43 @@ export default function DashboardClient({ instances: initial }: Props) {
     );
   }
 
-  function DeleteInstanceModal() {
-    if (!deleteInstanceModal) return null;
-    const { instance } = deleteInstanceModal;
+  function DeleteModal() {
+    if (!deleteModal) return null;
+    const { instance } = deleteModal;
+    const isDeleting = loading === instance.id;
     return (
-      <Modal onClose={() => setDeleteInstanceModal(null)}>
-        <h3 className="font-semibold text-gray-800 mb-2">Delete this instance?</h3>
-        <p className="text-sm text-gray-500 mb-5">
-          Delete this instance of <span className="font-medium text-gray-700">{instance.task?.name}</span>?
-          The series will continue with the next scheduled instance.
+      <Modal onClose={() => setDeleteModal(null)}>
+        <h3 className="font-semibold text-gray-800 mb-1">Delete</h3>
+        <p className="text-sm text-gray-500 mb-4">
+          What would you like to delete for{' '}
+          <span className="font-medium text-gray-700">{instance.task?.name}</span>?
         </p>
-        <div className="flex gap-2">
-          <button onClick={() => setDeleteInstanceModal(null)} className="flex-1 border border-gray-200 text-gray-600 text-sm rounded-lg py-2">Cancel</button>
+        <div className="space-y-2 mb-3">
           <button
             onClick={() => handleDeleteInstance(instance)}
-            disabled={loading === instance.id}
-            className="flex-1 bg-red-500 text-white text-sm font-medium rounded-lg py-2 disabled:opacity-50"
+            disabled={isDeleting}
+            className="w-full border border-red-200 text-left rounded-lg px-4 py-3 hover:bg-red-50 transition-colors disabled:opacity-50"
           >
-            {loading === instance.id ? 'Deleting…' : 'Delete instance'}
+            <span className="block text-sm font-semibold text-red-500">Delete just this instance</span>
+            <span className="block text-xs text-gray-400 mt-0.5">The series will continue with the next scheduled instance.</span>
           </button>
-        </div>
-      </Modal>
-    );
-  }
-
-  function DeleteTaskModal() {
-    if (!deleteTaskModal) return null;
-    const { instance } = deleteTaskModal;
-    return (
-      <Modal onClose={() => setDeleteTaskModal(null)}>
-        <h3 className="font-semibold text-gray-800 mb-2">Delete entire task?</h3>
-        <p className="text-sm text-gray-500 mb-5">
-          Delete <span className="font-medium text-gray-700">{instance.task?.name}</span> and all its instances?
-          This cannot be undone.
-        </p>
-        <div className="flex gap-2">
-          <button onClick={() => setDeleteTaskModal(null)} className="flex-1 border border-gray-200 text-gray-600 text-sm rounded-lg py-2">Cancel</button>
           <button
             onClick={() => handleDeleteTask(instance)}
-            disabled={loading === instance.id}
-            className="flex-1 bg-red-600 text-white text-sm font-medium rounded-lg py-2 disabled:opacity-50"
+            disabled={isDeleting}
+            className="w-full border border-red-300 bg-red-50 text-left rounded-lg px-4 py-3 hover:bg-red-100 transition-colors disabled:opacity-50"
           >
-            {loading === instance.id ? 'Deleting…' : 'Delete task'}
+            <span className="block text-sm font-semibold text-red-600">Delete entire task and all instances</span>
+            <span className="block text-xs text-red-400 mt-0.5">This cannot be undone.</span>
           </button>
         </div>
+        {isDeleting && <p className="text-xs text-center text-gray-400 mb-3">Deleting…</p>}
+        <button
+          onClick={() => setDeleteModal(null)}
+          disabled={isDeleting}
+          className="w-full border border-gray-200 text-gray-600 text-sm rounded-lg py-2 hover:bg-gray-50 transition-colors disabled:opacity-50"
+        >
+          Cancel
+        </button>
       </Modal>
     );
   }
@@ -832,17 +788,11 @@ export default function DashboardClient({ instances: initial }: Props) {
       {/* Main view */}
       {viewMode === 'list' ? ListView() : CalendarView()}
 
-      {/* Backdrop for 3-dot menu */}
-      {openMenu && (
-        <div className="fixed inset-0 z-40" onClick={() => setOpenMenu(null)} />
-      )}
-
       {/* Modals */}
       {CompleteModal()}
       {SnoozeModal()}
       {AdjustEventModal()}
-      {DeleteInstanceModal()}
-      {DeleteTaskModal()}
+      {DeleteModal()}
     </div>
   );
 }
