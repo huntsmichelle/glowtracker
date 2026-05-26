@@ -53,7 +53,7 @@ export default function RoutineTimeline({ tasks, conflictInstanceIds, color }: P
 
   if (visibleTasks.length === 0) {
     return (
-      <p className="text-sm text-gray-400 text-center py-4">
+      <p className="text-sm text-warm-light text-center py-4">
         No instances in the next 90 days.
       </p>
     );
@@ -68,7 +68,7 @@ export default function RoutineTimeline({ tasks, conflictInstanceIds, color }: P
             {months.map(m => (
               <span
                 key={m.dayOffset}
-                className="absolute text-xs text-gray-400 font-medium"
+                className="absolute text-xs text-warm-light font-medium"
                 style={{ left: `${(m.dayOffset / DAYS) * 100}%` }}
               >
                 {m.label}
@@ -89,11 +89,11 @@ export default function RoutineTimeline({ tasks, conflictInstanceIds, color }: P
             return (
               <div key={task.id} className="flex items-center gap-2">
                 <div className="flex-shrink-0 w-28">
-                  <p className="text-xs text-gray-600 truncate font-medium">{task.name}</p>
+                  <p className="text-xs text-warm-mid truncate font-medium">{task.name}</p>
                 </div>
-                <div className="relative flex-1 h-7 bg-gray-50 rounded-lg overflow-hidden">
+                <div className="relative flex-1 h-7 bg-taupe rounded-lg overflow-hidden">
                   {/* Today marker */}
-                  <div className="absolute top-0 bottom-0 w-px bg-pink-300 z-10" style={{ left: '0%' }} />
+                  <div className="absolute top-0 bottom-0 w-px bg-glow-border z-10" style={{ left: '0%' }} />
 
                   {inRange.map(inst => {
                     const s = differenceInDays(parseISO(inst.due_date_start), startDate);
@@ -112,13 +112,13 @@ export default function RoutineTimeline({ tasks, conflictInstanceIds, color }: P
                           width: `${Math.max(0.8, widthPct)}%`,
                           backgroundColor: isProjected ? color + '55' : color,
                           border: hasConflict
-                            ? '2px solid #EF4444'
+                            ? '2px solid #A89880'
                             : isProjected
                             ? `1px dashed ${color}`
                             : 'none',
                           opacity: inst.status === 'completed' || inst.status === 'skipped' ? 0.4 : 1,
                         }}
-                        title={`${inst.due_date_start} – ${inst.due_date_end}${hasConflict ? ' ⚠ conflict' : ''}`}
+                        title={`${inst.due_date_start} – ${inst.due_date_end}${hasConflict ? ' ⚠ overlap' : ''}`}
                       />
                     );
                   })}
@@ -129,7 +129,7 @@ export default function RoutineTimeline({ tasks, conflictInstanceIds, color }: P
         </div>
 
         {/* Legend */}
-        <div className="flex items-center gap-4 mt-3 text-xs text-gray-400" style={{ paddingLeft: '120px' }}>
+        <div className="flex items-center gap-4 mt-3 text-xs text-warm-light" style={{ paddingLeft: '120px' }}>
           <span className="flex items-center gap-1.5">
             <span className="inline-block w-6 h-2.5 rounded-sm" style={{ backgroundColor: color }} />
             Upcoming
@@ -140,8 +140,8 @@ export default function RoutineTimeline({ tasks, conflictInstanceIds, color }: P
           </span>
           {conflictInstanceIds.size > 0 && (
             <span className="flex items-center gap-1.5">
-              <span className="inline-block w-6 h-2.5 rounded-sm border-2 border-red-400" style={{ backgroundColor: color }} />
-              Conflict
+              <span className="inline-block w-6 h-2.5 rounded-sm border-2 border-dust" style={{ backgroundColor: color }} />
+              Overlap
             </span>
           )}
         </div>

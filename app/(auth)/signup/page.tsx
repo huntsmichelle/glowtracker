@@ -7,10 +7,10 @@ import { createClient } from '@/lib/supabase/client';
 
 export default function SignupPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
+  const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [error, setError]       = useState('');
+  const [loading, setLoading]   = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -31,64 +31,65 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
+    <div className="min-h-screen bg-cream flex items-center justify-center px-5">
       <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-pink-600">GlowTracker</h1>
-          <p className="text-gray-500 mt-1 text-sm">Your beauty routine, on your schedule</p>
+        {/* Brand */}
+        <div className="text-center mb-10">
+          <h1 className="font-display text-4xl text-charcoal">GlowLoop</h1>
+          <p className="text-warm-mid text-sm mt-1">Your personal ritual tracker</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-4">
-          <h2 className="text-lg font-semibold text-gray-800">Create account</h2>
+        <form
+          onSubmit={handleSubmit}
+          className="bg-stone border border-glow-border rounded-lg shadow-card p-8 space-y-5"
+        >
+          <div>
+            <p className="label-overline mb-4">Create account</p>
+          </div>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">
+            <div className="bg-dust-lt border border-[#C4A882] text-charcoal text-sm rounded-md px-4 py-3">
               {error}
             </div>
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="email">
+            <label className="block text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide" htmlFor="email">
               Email
             </label>
             <input
-              id="email"
-              type="email"
-              required
+              id="email" type="email" required
               value={email}
               onChange={e => setEmail(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400"
               placeholder="you@example.com"
+              className="w-full"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="password">
+            <label className="block text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide" htmlFor="password">
               Password
             </label>
             <input
-              id="password"
-              type="password"
-              required
-              minLength={6}
+              id="password" type="password" required minLength={6}
               value={password}
               onChange={e => setPassword(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400"
               placeholder="Min. 6 characters"
+              className="w-full"
             />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-pink-500 hover:bg-pink-600 disabled:opacity-50 text-white font-medium rounded-lg py-2.5 text-sm transition-colors"
+            className="w-full bg-charcoal text-cream text-sm font-medium rounded-pill py-3 hover:bg-charcoal/90 disabled:opacity-50 mt-2"
           >
             {loading ? 'Creating account…' : 'Create account'}
           </button>
 
-          <p className="text-center text-sm text-gray-500">
+          <p className="text-center text-sm text-warm-mid pt-1">
             Already have an account?{' '}
-            <Link href="/login" className="text-pink-600 font-medium hover:underline">
+            <Link href="/login" className="text-charcoal font-medium hover:underline underline-offset-2">
               Sign in
             </Link>
           </p>

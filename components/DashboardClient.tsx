@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { format, parseISO, differenceInDays, addDays } from 'date-fns';
 import { createClient } from '@/lib/supabase/client';
@@ -15,10 +15,13 @@ import {
   deriveStatus,
 } from '@/lib/instanceEngine';
 import type { InstanceWithTask, Task } from '@/types';
+import { detectRoutineConflicts } from '@/lib/conflictDetection';
+import { getTaskSuggestions, dismissSuggestion, type Suggestion } from '@/lib/suggestions';
 
 interface Props {
   instances: InstanceWithTask[];
   conflictCounts?: Record<string, number>;
+  userId: string;
 }
 
 type ViewMode = 'list' | 'calendar';
@@ -36,8 +39,52 @@ type PlannedEntry = {
 
 // ─── DashboardClient ──────────────────────────────────────────────────────────
 
-export default function DashboardClient({ instances: initial, conflictCounts = {} }: Props) {
+function getEditorialGreeting(ritualCount: number, dueCount: number): string {
+  const h = new Date().getHours();
+  if (h < 12) {
+    if (ritualCount === 0) return 'A quiet morning.';
+    return `A quiet morning — ${ritualCount} small act${ritualCount !== 1 ? 's' : ''}.`;
+  }
+  if (h < 17) {
+    if (dueCount > 0) return `${dueCount} ritual${dueCount !== 1 ? 's' : ''} waiting today.`;
+    return "Good afternoon — you're in rhythm.";
+  }
+  if (ritualCount > 0) return 'An evening to tend to things.';
+  return 'A still evening.';
+}
+
+function getDateOverline(): string {
+  const d = new Date();
+  const day  = d.toLocaleDateString('en-US', { weekday: 'long' }).toUpperCase();
+  const date = d.toLocaleDateString('en-US', { day: 'numeric', month: 'long' }).toUpperCase();
+  return `${day} · ${date}`;
+}
+
+export default function DashboardClient({ instances: initial, conflictCounts = {}, userId }: Props) {
   const [instances, setInstances] = useState(initial);
+
+  // ── Suggestions ────────────────────────────────────────────────────────────
+  const [conflicts, setConflicts]   = useState<Suggestion[]>([]);
+  const [syncs, setSyncs]           = useState<Suggestion[]>([]);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+
+  useEffect(() => {
+    const supabase = createClient();
+    getTaskSuggestions(supabase, userId).then(result => {
+      setConflicts(result.conflicts);
+      setSyncs(result.syncs);
+    });
+  }, [userId]);
+
+  async function handleDismiss(s: Suggestion) {
+    const supabase = createClient();
+    await dismissSuggestion(supabase, userId, s.taskA.id, s.taskB.id, s.relationshipType);
+    if (s.relationshipType === 'conflict') {
+      setConflicts(prev => prev.filter(x => !(x.taskA.id === s.taskA.id && x.taskB.id === s.taskB.id)));
+    } else {
+      setSyncs(prev => prev.filter(x => !(x.taskA.id === s.taskA.id && x.taskB.id === s.taskB.id)));
+    }
+  }
 
   // ── View mode (list / calendar) ────────────────────────────────────────────
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
@@ -65,14 +112,34 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
     const firstDay = `${year}-${String(month).padStart(2, '0')}-01`;
     const daysInMonth = new Date(year, month, 0).getDate();
     const lastDay = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
-    const { data } = await supabase
+
+    // Non-completed: show on their scheduled window start
+    const { data: scheduled } = await supabase
       .from('instances')
       .select('*, task:tasks(*, category:categories(*), routine:routines(id, name, color))')
       .gte('due_date_start', firstDay)
       .lte('due_date_start', lastDay)
-      .neq('status', 'skipped')
+      .not('status', 'in', '(completed,skipped)')
       .order('due_date_start', { ascending: true });
-    setCalInstances((data as InstanceWithTask[]) ?? []);
+
+    // Completed: show on their actual completion date (may differ from scheduled window)
+    const { data: completed } = await supabase
+      .from('instances')
+      .select('*, task:tasks(*, category:categories(*), routine:routines(id, name, color))')
+      .eq('status', 'completed')
+      .gte('actual_completion_date', firstDay)
+      .lte('actual_completion_date', lastDay)
+      .order('actual_completion_date', { ascending: true });
+
+    // Merge, deduplicating by id (a completed instance whose due_date_start is also in this month appears once)
+    const seen = new Set<string>();
+    const merged = [...(scheduled ?? []), ...(completed ?? [])].filter(i => {
+      if (seen.has(i.id)) return false;
+      seen.add(i.id);
+      return true;
+    });
+
+    setCalInstances(merged as InstanceWithTask[]);
     setCalLoading(false);
   }, []);
 
@@ -187,6 +254,8 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
           .sort((a, b) => a.due_date_start.localeCompare(b.due_date_start))
       );
     }
+    const routineId = (instance.task as unknown as { routine?: { id: string } }).routine?.id;
+    if (routineId) detectRoutineConflicts(routineId).catch(console.error);
     setCompleteModal(null);
     setLoading(null);
   }
@@ -201,6 +270,8 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
           .sort((a, b) => a.due_date_start.localeCompare(b.due_date_start))
       );
     }
+    const routineId = (instance.task as unknown as { routine?: { id: string } }).routine?.id;
+    if (routineId) detectRoutineConflicts(routineId).catch(console.error);
     setLoading(null);
   }
 
@@ -242,21 +313,98 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
   const due      = instances.filter(i => deriveStatus(i) === 'due');
   const upcoming = instances.filter(i => deriveStatus(i) !== 'due');
 
-  type RoutineInfo = { id: string; name: string; color: string } | null;
+  type RoutineInfo  = { id: string; name: string; color: string } | null;
+  type CategoryInfo = { id: string; name: string; color: string } | null;
 
-  function groupByRoutine(items: InstanceWithTask[]) {
-    const map = new Map<string, { routine: RoutineInfo; items: InstanceWithTask[] }>();
+  function groupByRoutineAndCategory(items: InstanceWithTask[]) {
+    type CatGroup   = { category: CategoryInfo; items: InstanceWithTask[] };
+    type RoutineGrp = { routine: RoutineInfo; catMap: Map<string, CatGroup> };
+    const routineMap = new Map<string, RoutineGrp>();
+
     for (const inst of items) {
-      const r = (inst.task as unknown as { routine?: RoutineInfo }).routine ?? null;
-      const key = r?.id ?? '__none__';
-      if (!map.has(key)) map.set(key, { routine: r, items: [] });
-      map.get(key)!.items.push(inst);
+      const r    = (inst.task as unknown as { routine?: RoutineInfo }).routine ?? null;
+      const rKey = r?.id ?? '__none__';
+      if (!routineMap.has(rKey)) routineMap.set(rKey, { routine: r, catMap: new Map() });
+
+      const cat  = (inst.task?.category as CategoryInfo | undefined) ?? null;
+      const cKey = cat?.id ?? '__no-cat__';
+      const rGrp = routineMap.get(rKey)!;
+      if (!rGrp.catMap.has(cKey)) rGrp.catMap.set(cKey, { category: cat, items: [] });
+      rGrp.catMap.get(cKey)!.items.push(inst);
     }
-    return [...map.entries()].sort(([ka, a], [kb, b]) => {
-      if (ka === '__none__') return 1;
-      if (kb === '__none__') return -1;
-      return (a.routine?.name ?? '').localeCompare(b.routine?.name ?? '');
-    });
+
+    return [...routineMap.entries()]
+      .sort(([ka, a], [kb, b]) => {
+        if (ka === '__none__') return 1;
+        if (kb === '__none__') return -1;
+        return (a.routine?.name ?? '').localeCompare(b.routine?.name ?? '');
+      })
+      .map(([rKey, { routine, catMap }]) => ({
+        key: rKey,
+        routine,
+        categories: [...catMap.entries()]
+          .sort(([, a], [, b]) => {
+            if (!a.category) return 1;
+            if (!b.category) return -1;
+            return a.category.name.localeCompare(b.category.name);
+          })
+          .map(([cKey, g]) => ({ key: cKey, ...g })),
+      }));
+  }
+
+  function renderRoutineGroups(items: InstanceWithTask[]) {
+    return groupByRoutineAndCategory(items).map(({ key: rKey, routine, categories }) => (
+      <div key={rKey} className="space-y-4">
+        {routine ? (
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: routine.color }} />
+            <Link href={`/routines/${routine.id}`} className="label-overline hover:text-charcoal">
+              {routine.name}
+            </Link>
+            {conflictCounts[routine.id] > 0 && (
+              <Link href={`/routines/${routine.id}`} className="text-xs font-medium bg-dust-lt text-charcoal rounded-pill px-2 py-0.5">
+                {conflictCounts[routine.id]} overlap{conflictCounts[routine.id] !== 1 ? 's' : ''}
+              </Link>
+            )}
+          </div>
+        ) : (
+          <p className="label-overline">Individual Rituals</p>
+        )}
+        <div className="space-y-4">
+          {categories.map(({ key: cKey, category, items: catItems }) => (
+            <div key={cKey}>
+              <div className="flex items-center gap-1.5 mb-2 pl-3">
+                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: category?.color ?? '#9E9890' }} />
+                <span className="text-xs text-warm-light">{category?.name ?? 'Uncategorized'}</span>
+              </div>
+              <div className="space-y-3">
+                {(() => {
+                  const seen = new Set<string>();
+                  const els: React.ReactNode[] = [];
+                  for (const inst of catItems) {
+                    if (seen.has(inst.id)) continue;
+                    seen.add(inst.id);
+                    const paired = catItems.find(
+                      o => !seen.has(o.id) &&
+                        o.task_id === inst.task_id &&
+                        o.due_date_start === inst.due_date_start
+                    );
+                    if (paired) {
+                      seen.add(paired.id);
+                      const [slotA, slotB] = inst.slot === 'a' ? [inst, paired] : [paired, inst];
+                      els.push(<TwiceDailyPairCard key={`${inst.id}-pair`} slotA={slotA} slotB={slotB} />);
+                    } else {
+                      els.push(<InstanceCard key={inst.id} instance={inst} />);
+                    }
+                  }
+                  return els;
+                })()}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    ));
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -265,13 +413,13 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
 
   function ViewToggle() {
     return (
-      <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+      <div className="flex rounded-md border border-glow-border overflow-hidden">
         {(['list', 'calendar'] as ViewMode[]).map(v => (
           <button
             key={v}
             onClick={() => switchView(v)}
-            className={`flex-1 text-xs font-medium py-1.5 transition-colors capitalize ${
-              viewMode === v ? 'bg-pink-500 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'
+            className={`flex-1 text-xs font-medium py-1.5 px-3 transition-colors capitalize ${
+              viewMode === v ? 'bg-charcoal text-cream' : 'bg-stone text-warm-mid hover:bg-taupe'
             }`}
           >
             {v === 'list' ? 'List' : 'Calendar'}
@@ -285,43 +433,44 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
     const status    = deriveStatus(instance);
     const daysUntil = differenceInDays(parseISO(instance.due_date_start), today());
     const isOverdue = differenceInDays(today(), parseISO(instance.due_date_end)) > 0;
-    const categoryColor = instance.task?.category?.color ?? '#6B7280';
+    const categoryColor = instance.task?.category?.color ?? '#9E9890';
     const isCountdown   = instance.task?.mode === 'countdown';
     const dateLabel = `${format(parseISO(instance.due_date_start), 'MMM d')} – ${format(parseISO(instance.due_date_end), 'MMM d')}`;
 
     let urgencyLabel: string;
-    if (isOverdue)          urgencyLabel = `Overdue by ${differenceInDays(today(), parseISO(instance.due_date_end))}d`;
-    else if (daysUntil <= 0) urgencyLabel = 'Due now';
+    if (isOverdue)           urgencyLabel = `Ready for refresh — ${differenceInDays(today(), parseISO(instance.due_date_end))}d past window`;
+    else if (daysUntil <= 0) urgencyLabel = 'Window open now';
     else                     urgencyLabel = `In ${daysUntil} day${daysUntil === 1 ? '' : 's'}`;
 
     const isLoading = loading === instance.id;
 
     return (
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 hover:border-pink-200 transition-colors">
+      <div className="bg-stone border border-glow-border rounded-lg shadow-card p-4 card-lift">
         <Link href={`/instances/${instance.id}`} className="block mb-3">
           <div className="flex items-start justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: categoryColor }} />
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: categoryColor }} />
               <div className="min-w-0">
-                <p className="font-medium text-gray-800 text-sm truncate">{instance.task?.name}</p>
-                <p className="text-xs text-gray-400">
+                <p className="font-medium text-charcoal text-sm truncate">{instance.task?.name}</p>
+                <p className="text-xs text-warm-light mt-0.5">
                   {instance.task?.category?.name ?? ''}
+                  {instance.time_of_day_label && <span className="ml-1">· {instance.time_of_day_label}</span>}
                   {isCountdown && instance.task?.target_label && (
-                    <span className="ml-1 text-purple-400">→ {instance.task.target_label}</span>
+                    <span className="ml-1 text-warm-mid">→ {instance.task.target_label}</span>
                   )}
                   {instance.is_event_override && instance.event_name && (
-                    <span className="ml-1 text-amber-500">⏱ {instance.event_name}</span>
+                    <span className="ml-1 text-dust">⏱ {instance.event_name}</span>
                   )}
                 </p>
               </div>
             </div>
             <div className="text-right flex-shrink-0">
-              <p className="text-xs text-gray-500">{dateLabel}</p>
-              <p className={`text-xs font-medium ${isOverdue ? 'text-red-500' : status === 'due' ? 'text-amber-500' : 'text-gray-400'}`}>
+              <p className="text-xs text-warm-mid">{dateLabel}</p>
+              <p className={`text-xs font-medium mt-0.5 ${isOverdue ? 'text-dust' : status === 'due' ? 'text-sage' : 'text-warm-light'}`}>
                 {urgencyLabel}
               </p>
               {instance.task?.default_cost != null && (
-                <p className="text-xs text-gray-300">${instance.task.default_cost.toFixed(2)}</p>
+                <p className="text-xs text-warm-light mt-0.5">${instance.task.default_cost.toFixed(2)}</p>
               )}
             </div>
           </div>
@@ -331,35 +480,35 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
           <button
             onClick={e => { e.stopPropagation(); openCompleteModal(instance); }}
             disabled={isLoading}
-            className="flex-1 min-w-[60px] min-h-[44px] bg-green-500 hover:bg-green-600 text-white text-xs font-semibold rounded-lg px-2 transition-colors disabled:opacity-50"
+            className="flex-1 min-w-[60px] min-h-[44px] bg-charcoal hover:bg-charcoal/90 text-cream text-xs font-medium rounded-md px-2 disabled:opacity-50"
           >
-            Done
+            Kept
           </button>
           <button
             onClick={e => { e.stopPropagation(); handleSkip(instance); }}
             disabled={isLoading}
-            className="flex-1 min-w-[50px] min-h-[44px] bg-gray-50 hover:bg-gray-100 text-gray-500 text-xs font-medium rounded-lg px-2 transition-colors disabled:opacity-50"
+            className="flex-1 min-w-[50px] min-h-[44px] bg-taupe hover:bg-glow-border text-warm-mid text-xs font-medium rounded-md px-2 disabled:opacity-50"
           >
-            Skip
+            Pass
           </button>
           <button
             onClick={e => { e.stopPropagation(); setSnoozeDays(3); setSnoozeModal({ instance }); }}
             disabled={isLoading}
-            className="flex-1 min-w-[60px] min-h-[44px] bg-amber-50 hover:bg-amber-100 text-amber-600 text-xs font-medium rounded-lg px-2 transition-colors disabled:opacity-50"
+            className="flex-1 min-w-[60px] min-h-[44px] bg-dust-lt hover:bg-dust/20 text-charcoal text-xs font-medium rounded-md px-2 disabled:opacity-50"
           >
-            Snooze
+            Nudge
           </button>
           <button
             onClick={e => { e.stopPropagation(); openAdjustModal(instance); }}
             disabled={isLoading}
-            className="flex-1 min-w-[110px] min-h-[44px] bg-purple-50 hover:bg-purple-100 text-purple-600 text-xs font-medium rounded-lg px-2 transition-colors disabled:opacity-50"
+            className="flex-1 min-w-[100px] min-h-[44px] bg-taupe hover:bg-glow-border text-warm-mid text-xs font-medium rounded-md px-2 disabled:opacity-50"
           >
             Adjust for event
           </button>
           <button
             onClick={e => { e.stopPropagation(); setDeleteModal({ instance }); }}
             disabled={isLoading}
-            className="flex-1 min-w-[60px] min-h-[44px] bg-red-50 hover:bg-red-100 text-red-500 text-xs font-medium rounded-lg px-2 transition-colors disabled:opacity-50"
+            className="flex-1 min-w-[60px] min-h-[44px] bg-dust-lt hover:bg-dust/20 text-warm-mid text-xs font-medium rounded-md px-2 disabled:opacity-50"
           >
             Delete
           </button>
@@ -368,63 +517,67 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
     );
   }
 
+  function TwiceDailyPairCard({ slotA, slotB }: { slotA: InstanceWithTask; slotB: InstanceWithTask }) {
+    const categoryColor = slotA.task?.category?.color ?? '#9E9890';
+    const isLoading = loading === slotA.id || loading === slotB.id;
+
+    return (
+      <div className="bg-stone border border-glow-border rounded-lg shadow-card p-4 card-lift">
+        <Link href={`/instances/${slotA.id}`} className="flex items-center gap-2.5 mb-3">
+          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: categoryColor }} />
+          <p className="font-medium text-charcoal text-sm">{slotA.task?.name}</p>
+        </Link>
+        <div className="space-y-2">
+          {([slotA, slotB] as InstanceWithTask[]).map(slot => (
+            <div key={slot.id} className="pl-3 border-l-2 border-glow-border space-y-1.5">
+              <p className="text-xs font-medium text-warm-mid">
+                {slot.time_of_day_label ?? (slot.id === slotA.id ? 'First' : 'Second')}
+              </p>
+              <div className="flex gap-1.5">
+                <button onClick={e => { e.stopPropagation(); openCompleteModal(slot); }} disabled={isLoading} className="flex-1 min-h-[36px] bg-charcoal text-cream text-xs font-medium rounded-md px-2 disabled:opacity-50 hover:bg-charcoal/90">Kept</button>
+                <button onClick={e => { e.stopPropagation(); handleSkip(slot); }} disabled={isLoading} className="flex-1 min-h-[36px] bg-taupe text-warm-mid text-xs font-medium rounded-md px-2 disabled:opacity-50 hover:bg-glow-border">Pass</button>
+                <button onClick={e => { e.stopPropagation(); setSnoozeDays(3); setSnoozeModal({ instance: slot }); }} disabled={isLoading} className="flex-1 min-h-[36px] bg-dust-lt text-charcoal text-xs font-medium rounded-md px-2 disabled:opacity-50 hover:bg-dust/20">Nudge</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   function ListView() {
     if (instances.length === 0) {
       return (
-        <div className="text-center py-16">
-          <div className="text-4xl mb-4">✨</div>
-          <h2 className="text-xl font-semibold text-gray-700 mb-2">All caught up!</h2>
-          <p className="text-gray-400 text-sm mb-6">No upcoming tasks right now.</p>
-          <Link href="/tasks/new" className="inline-block bg-pink-500 text-white text-sm font-medium rounded-lg px-4 py-2.5">
-            Add a task
+        <div className="text-center py-20">
+          <div className="w-10 h-10 mx-auto mb-4 text-warm-light">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zM12 6v6l4 2" />
+            </svg>
+          </div>
+          <h2 className="font-display text-2xl text-charcoal mb-2">All tended to.</h2>
+          <p className="text-warm-mid text-sm mb-8">No rituals on the horizon right now.</p>
+          <Link href="/tasks/new" className="inline-block bg-charcoal text-cream text-sm font-medium rounded-pill px-6 py-3 hover:bg-charcoal/90">
+            + Add Ritual
           </Link>
         </div>
       );
     }
 
     return (
-      <div className="space-y-6">
+      <div className="space-y-8">
         {due.length > 0 && (
           <section>
-            <h2 className="text-xs font-semibold text-red-500 uppercase tracking-wide mb-3">Due Now</h2>
-            <div className="space-y-3">
-              {due.map(i => <InstanceCard key={i.id} instance={i} />)}
+            <p className="label-overline mb-4" style={{ color: 'var(--color-accent-dust)' }}>Ready for Refresh</p>
+            <div className="space-y-5">
+              {renderRoutineGroups(due)}
             </div>
           </section>
         )}
         {upcoming.length > 0 && (
           <section>
-            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Upcoming</h2>
+            <p className="label-overline mb-4">On the Horizon</p>
             <div className="space-y-5">
-              {groupByRoutine(upcoming).map(([key, group]) => (
-                <div key={key}>
-                  {group.routine && (
-                    <div className="flex items-center gap-2 mb-2">
-                      <span
-                        className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: group.routine.color }}
-                      />
-                      <Link
-                        href={`/routines/${group.routine.id}`}
-                        className="text-xs font-semibold text-gray-500 hover:text-gray-700"
-                      >
-                        {group.routine.name}
-                      </Link>
-                      {conflictCounts[group.routine.id] > 0 && (
-                        <Link
-                          href={`/routines/${group.routine.id}`}
-                          className="text-xs font-semibold bg-red-100 text-red-500 rounded-full px-1.5 py-0.5"
-                        >
-                          {conflictCounts[group.routine.id]} conflict{conflictCounts[group.routine.id] !== 1 ? 's' : ''}
-                        </Link>
-                      )}
-                    </div>
-                  )}
-                  <div className="space-y-3">
-                    {group.items.map(i => <InstanceCard key={i.id} instance={i} />)}
-                  </div>
-                </div>
-              ))}
+              {renderRoutineGroups(upcoming)}
             </div>
           </section>
         )}
@@ -438,10 +591,12 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
     const todayStr      = format(today(), 'yyyy-MM-dd');
     const monthLabel    = new Date(calYear, calMonth - 1).toLocaleString('default', { month: 'long', year: 'numeric' });
 
-    // Build map: dateStr → instances
+    // Build map: dateStr → instances (completed → actual_completion_date; others → due_date_start)
     const byDate: Record<string, InstanceWithTask[]> = {};
     for (const inst of calInstances) {
-      const d = inst.due_date_start;
+      const d = inst.status === 'completed' && inst.actual_completion_date
+        ? inst.actual_completion_date
+        : inst.due_date_start;
       if (!byDate[d]) byDate[d] = [];
       byDate[d].push(inst);
     }
@@ -506,7 +661,7 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
                             }`}
                             style={{ backgroundColor: (inst.task as any)?.routine?.color ?? inst.task?.category?.color ?? '#6B7280' }}
                           >
-                            {isCompleted ? '✓ ' : ''}{inst.task?.name ?? '—'}
+                            {isCompleted ? '✓ ' : ''}{inst.task?.name ?? '—'}{inst.time_of_day_label ? ` · ${inst.time_of_day_label}` : ''}
                           </div>
                         </Link>
                       );
@@ -557,8 +712,9 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
         .filter(e => e.actual_completion_date.startsWith(m))
         .reduce((s, e) => s + e.cost, 0);
       const plan      = !isPast ? plannedForMonth(m) : 0;
+      const [y, mo]   = m.split('-').map(Number);
       return {
-        label: new Date(m + '-01').toLocaleString('default', { month: 'short' }),
+        label: new Date(y, mo - 1, 1).toLocaleString('default', { month: 'short' }),
         spent,
         planned: plan,
         isPast,
@@ -604,44 +760,44 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
     const hasAnyData = entries.length > 0 || planned.length > 0;
 
     return (
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-stone border border-glow-border rounded-lg shadow-card overflow-hidden">
         <button
           onClick={() => setSpendingOpen(o => !o)}
-          className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors"
+          className="w-full flex items-center justify-between px-5 py-4 hover:bg-taupe transition-colors"
         >
-          <h2 className="text-sm font-semibold text-gray-700">Spending</h2>
-          <span className="text-gray-400 text-xs">{spendingOpen ? '▲ Hide' : '▼ Show'}</span>
+          <p className="label-overline">Spending</p>
+          <span className="text-warm-light text-xs">{spendingOpen ? '▲' : '▼'}</span>
         </button>
 
         {spendingOpen && (
-          <div className="px-5 pb-5 border-t border-gray-100 space-y-5 pt-4">
+          <div className="px-5 pb-5 border-t border-glow-border space-y-5 pt-4">
             {spendingLoading ? (
-              <p className="text-sm text-gray-400 text-center py-4">Loading…</p>
+              <p className="text-sm text-warm-light text-center py-4">Loading…</p>
             ) : !hasAnyData ? (
-              <p className="text-sm text-gray-400 text-center py-4">
-                No cost data yet. Add a typical cost to your tasks, then log it when completing.
+              <p className="text-sm text-warm-light text-center py-4">
+                No cost data yet. Add a typical cost to your rituals, then log it when marking kept.
               </p>
             ) : (
               <>
                 {/* Summary row */}
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-pink-50 rounded-xl p-3">
-                    <p className="text-xs text-gray-400 mb-0.5">This month</p>
-                    <p className="text-xl font-bold text-gray-800">${thisMonthSpent.toFixed(2)}</p>
+                  <div className="bg-taupe rounded-md p-4">
+                    <p className="label-overline mb-1">This month</p>
+                    <p className="font-display text-2xl text-charcoal stat-number">${thisMonthSpent.toFixed(2)}</p>
                     {thisMonthPlanned > 0 && (
-                      <p className="text-xs text-purple-500 mt-0.5">+${thisMonthPlanned.toFixed(2)} planned</p>
+                      <p className="text-xs text-warm-mid mt-0.5">+${thisMonthPlanned.toFixed(2)} planned</p>
                     )}
                   </div>
-                  <div className="bg-gray-50 rounded-xl p-3">
-                    <p className="text-xs text-gray-400 mb-0.5">Monthly avg (spent)</p>
-                    <p className="text-xl font-bold text-gray-800">${monthlyAvg.toFixed(2)}</p>
+                  <div className="bg-taupe rounded-md p-4">
+                    <p className="label-overline mb-1">Monthly avg</p>
+                    <p className="font-display text-2xl text-charcoal stat-number">${monthlyAvg.toFixed(2)}</p>
                   </div>
                 </div>
 
                 {/* By category (this month) */}
                 {catList.length > 0 && (
                   <div>
-                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">This month by category</p>
+                    <p className="label-overline mb-3">This month by category</p>
                     <div className="space-y-2">
                       {catList.map(cat => (
                         <div key={cat.name} className="flex items-center gap-2">
@@ -672,9 +828,7 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
 
                 {/* 7-month bar chart (3 past + current + 3 future) */}
                 <div>
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
-                    Spent &amp; planned (7 months)
-                  </p>
+                  <p className="label-overline mb-3">Spent &amp; planned — 7 months</p>
                   <div className="flex items-end gap-1 h-20">
                     {barData.map(m => (
                       <div key={m.label} className="flex-1 flex flex-col items-center gap-0.5">
@@ -724,10 +878,10 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
                   </div>
                 </div>
 
-                {/* Top 5 tasks */}
+                {/* Top 5 rituals */}
                 {top5.length > 0 && (
                   <div>
-                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Top tasks by spend</p>
+                    <p className="label-overline mb-3">Top rituals by spend</p>
                     <div className="space-y-1.5">
                       {top5.map((t, i) => (
                         <div key={t.name} className="flex items-center justify-between">
@@ -755,18 +909,18 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
     const { instance } = completeModal;
     return (
       <Modal onClose={() => setCompleteModal(null)}>
-        <h3 className="font-semibold text-gray-800 mb-1">Mark complete</h3>
-        <p className="text-sm text-gray-500 mb-4">{instance.task?.name}</p>
+        <p className="label-overline mb-4">Mark Kept</p>
+        <p className="text-sm text-warm-mid mb-5">{instance.task?.name}</p>
 
-        <p className="text-sm font-medium text-gray-700 mb-2">When did you do this?</p>
-        <div className="flex gap-2 mb-3">
+        <p className="text-xs font-medium text-warm-mid uppercase tracking-wide mb-2">When did you do this?</p>
+        <div className="flex gap-2 mb-4">
           <button
             type="button"
             onClick={() => setCompletionDateMode('scheduled')}
-            className={`flex-1 rounded-lg px-3 py-2.5 text-sm border transition-colors text-left ${
+            className={`flex-1 rounded-md px-3 py-2.5 text-sm border text-left ${
               completionDateMode === 'scheduled'
-                ? 'bg-green-500 border-green-500 text-white'
-                : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                ? 'bg-charcoal border-charcoal text-cream'
+                : 'bg-taupe border-glow-border text-charcoal hover:bg-stone'
             }`}
           >
             <span className="block font-medium">Scheduled date</span>
@@ -777,10 +931,10 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
           <button
             type="button"
             onClick={() => setCompletionDateMode('custom')}
-            className={`flex-1 rounded-lg px-3 py-2.5 text-sm border transition-colors text-left ${
+            className={`flex-1 rounded-md px-3 py-2.5 text-sm border text-left ${
               completionDateMode === 'custom'
-                ? 'bg-green-500 border-green-500 text-white'
-                : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                ? 'bg-charcoal border-charcoal text-cream'
+                : 'bg-taupe border-glow-border text-charcoal hover:bg-stone'
             }`}
           >
             <span className="block font-medium">Different date</span>
@@ -792,28 +946,28 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
           <input
             type="date" value={completionDate} max={format(today(), 'yyyy-MM-dd')}
             onChange={e => setCompletionDate(e.target.value)}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3"
+            className="w-full mb-4"
           />
         )}
 
-        <label className="block text-sm font-medium text-gray-700 mb-1">Cost (optional)</label>
-        <div className="relative mb-4">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+        <label className="block text-xs font-medium text-warm-mid uppercase tracking-wide mb-1.5">Cost (optional)</label>
+        <div className="relative mb-5">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-warm-light text-sm">$</span>
           <input
             type="number" min={0} step="0.01" value={completionCost}
             onChange={e => setCompletionCost(e.target.value)}
             placeholder={instance.task?.default_cost != null ? String(instance.task.default_cost) : '0.00'}
-            className="w-full border border-gray-200 rounded-lg pl-7 pr-3 py-2 text-sm"
+            className="w-full pl-7"
           />
         </div>
         <div className="flex gap-2">
-          <button onClick={() => setCompleteModal(null)} className="flex-1 border border-gray-200 text-gray-600 text-sm rounded-lg py-2">Cancel</button>
+          <button onClick={() => setCompleteModal(null)} className="flex-1 border border-glow-border text-warm-mid text-sm rounded-pill py-2.5 hover:bg-taupe">Cancel</button>
           <button
             onClick={() => handleComplete(instance)}
             disabled={loading === instance.id}
-            className="flex-1 bg-green-500 text-white text-sm font-medium rounded-lg py-2 disabled:opacity-50"
+            className="flex-1 bg-charcoal text-cream text-sm font-medium rounded-pill py-2.5 disabled:opacity-50 hover:bg-charcoal/90"
           >
-            {loading === instance.id ? 'Saving…' : 'Done'}
+            {loading === instance.id ? 'Saving…' : 'Mark Kept'}
           </button>
         </div>
       </Modal>
@@ -825,22 +979,22 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
     const { instance } = snoozeModal;
     return (
       <Modal onClose={() => setSnoozeModal(null)}>
-        <h3 className="font-semibold text-gray-800 mb-1">Snooze</h3>
-        <p className="text-sm text-gray-500 mb-4">{instance.task?.name}</p>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Days to snooze</label>
+        <p className="label-overline mb-4">Nudge</p>
+        <p className="text-sm text-warm-mid mb-4">{instance.task?.name}</p>
+        <label className="block text-xs font-medium text-warm-mid uppercase tracking-wide mb-1.5">Days to nudge forward</label>
         <input
           type="number" min={1} max={30} value={snoozeDays}
           onChange={e => setSnoozeDays(Number(e.target.value))}
-          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-4"
+          className="w-full mb-5"
         />
         <div className="flex gap-2">
-          <button onClick={() => setSnoozeModal(null)} className="flex-1 border border-gray-200 text-gray-600 text-sm rounded-lg py-2">Cancel</button>
+          <button onClick={() => setSnoozeModal(null)} className="flex-1 border border-glow-border text-warm-mid text-sm rounded-pill py-2.5 hover:bg-taupe">Cancel</button>
           <button
             onClick={() => handleSnooze(instance)}
             disabled={loading === instance.id}
-            className="flex-1 bg-amber-500 text-white text-sm font-medium rounded-lg py-2 disabled:opacity-50"
+            className="flex-1 bg-charcoal text-cream text-sm font-medium rounded-pill py-2.5 disabled:opacity-50 hover:bg-charcoal/90"
           >
-            {loading === instance.id ? 'Saving…' : 'Snooze'}
+            {loading === instance.id ? 'Saving…' : 'Nudge'}
           </button>
         </div>
       </Modal>
@@ -857,39 +1011,39 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
 
     return (
       <Modal onClose={() => setAdjustModal(null)}>
-        <h3 className="font-semibold text-gray-800 mb-1">Adjust for event</h3>
-        <p className="text-sm text-gray-500 mb-4">{instance.task?.name}</p>
+        <p className="label-overline mb-1">Adjust for event</p>
+        <p className="text-sm text-warm-mid mb-4">{instance.task?.name}</p>
 
         <div className="space-y-3">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Event name *</label>
+            <label className="block text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide">Event name *</label>
             <input
               type="text" value={eventName} onChange={e => setEventName(e.target.value)}
               placeholder="e.g. Vacation to Italy"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+              className="w-full"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Event date *</label>
+            <label className="block text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide">Event date *</label>
             <input
               type="date" value={eventDate}
               min={format(today(), 'yyyy-MM-dd')}
               onChange={e => setEventDate(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+              className="w-full"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Days before event</label>
+            <label className="block text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide">Days before event</label>
             <input
               type="number" min={1} max={90} value={daysBefore}
               onChange={e => setDaysBefore(Number(e.target.value))}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+              className="w-full"
             />
           </div>
 
           {adjustedPreview && (
-            <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-xs text-purple-700">
-              Moves to <span className="font-medium">{adjustedPreview}</span>
+            <div className="bg-taupe border border-glow-border rounded-md p-3 text-xs text-warm-mid">
+              Moves to <span className="font-medium text-charcoal">{adjustedPreview}</span>
               {eventName && ` — ${daysBefore}d before ${eventName}`}.
             </div>
           )}
@@ -898,32 +1052,32 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
             <input
               type="checkbox" id="resumeNormalModal" checked={resumeNormal}
               onChange={e => setResumeNormal(e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-gray-300"
+              className="mt-0.5 h-4 w-4 rounded border-glow-border"
             />
-            <label htmlFor="resumeNormalModal" className="text-sm text-gray-700">
+            <label htmlFor="resumeNormalModal" className="text-sm text-charcoal">
               Resume normal cadence after event
             </label>
           </div>
 
           {!resumeNormal && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Next instance date after event</label>
+              <label className="block text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide">Next instance date after event</label>
               <input
                 type="date" value={overrideNextDate}
                 min={eventDate || format(today(), 'yyyy-MM-dd')}
                 onChange={e => setOverrideNextDate(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                className="w-full"
               />
             </div>
           )}
         </div>
 
-        <div className="flex gap-2 mt-4">
-          <button onClick={() => setAdjustModal(null)} className="flex-1 border border-gray-200 text-gray-600 text-sm rounded-lg py-2">Cancel</button>
+        <div className="flex gap-2 mt-5">
+          <button onClick={() => setAdjustModal(null)} className="flex-1 border border-glow-border text-warm-mid text-sm rounded-pill py-2 hover:bg-taupe transition-colors">Cancel</button>
           <button
             onClick={() => handleAdjustForEvent(instance)}
             disabled={loading === instance.id || !eventName.trim() || !eventDate}
-            className="flex-1 bg-purple-500 text-white text-sm font-medium rounded-lg py-2 disabled:opacity-50"
+            className="flex-1 bg-charcoal text-cream text-sm font-medium rounded-pill py-2 disabled:opacity-50"
           >
             {loading === instance.id ? 'Saving…' : 'Confirm'}
           </button>
@@ -938,34 +1092,34 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
     const isDeleting = loading === instance.id;
     return (
       <Modal onClose={() => setDeleteModal(null)}>
-        <h3 className="font-semibold text-gray-800 mb-1">Delete</h3>
-        <p className="text-sm text-gray-500 mb-4">
-          What would you like to delete for{' '}
-          <span className="font-medium text-gray-700">{instance.task?.name}</span>?
+        <p className="label-overline mb-1">Remove</p>
+        <p className="text-sm text-warm-mid mb-4">
+          What would you like to remove for{' '}
+          <span className="font-medium text-charcoal">{instance.task?.name}</span>?
         </p>
         <div className="space-y-2 mb-3">
           <button
             onClick={() => handleDeleteInstance(instance)}
             disabled={isDeleting}
-            className="w-full border border-red-200 text-left rounded-lg px-4 py-3 hover:bg-red-50 transition-colors disabled:opacity-50"
+            className="w-full border border-glow-border text-left rounded-lg px-4 py-3 hover:bg-taupe transition-colors disabled:opacity-50"
           >
-            <span className="block text-sm font-semibold text-red-500">Delete just this instance</span>
-            <span className="block text-xs text-gray-400 mt-0.5">The series will continue with the next scheduled instance.</span>
+            <span className="block text-sm font-semibold text-charcoal">Remove just this instance</span>
+            <span className="block text-xs text-warm-light mt-0.5">The series will continue with the next scheduled instance.</span>
           </button>
           <button
             onClick={() => handleDeleteTask(instance)}
             disabled={isDeleting}
-            className="w-full border border-red-300 bg-red-50 text-left rounded-lg px-4 py-3 hover:bg-red-100 transition-colors disabled:opacity-50"
+            className="w-full border border-dust bg-dust-lt text-left rounded-lg px-4 py-3 hover:bg-dust/20 transition-colors disabled:opacity-50"
           >
-            <span className="block text-sm font-semibold text-red-600">Delete entire task and all instances</span>
-            <span className="block text-xs text-red-400 mt-0.5">This cannot be undone.</span>
+            <span className="block text-sm font-semibold text-charcoal">Remove entire ritual and all instances</span>
+            <span className="block text-xs text-warm-mid mt-0.5">This cannot be undone.</span>
           </button>
         </div>
-        {isDeleting && <p className="text-xs text-center text-gray-400 mb-3">Deleting…</p>}
+        {isDeleting && <p className="text-xs text-center text-warm-light mb-3">Removing…</p>}
         <button
           onClick={() => setDeleteModal(null)}
           disabled={isDeleting}
-          className="w-full border border-gray-200 text-gray-600 text-sm rounded-lg py-2 hover:bg-gray-50 transition-colors disabled:opacity-50"
+          className="w-full border border-glow-border text-warm-mid text-sm rounded-pill py-2 hover:bg-taupe transition-colors disabled:opacity-50"
         >
           Cancel
         </button>
@@ -977,18 +1131,82 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
   // ROOT RENDER
   // ─────────────────────────────────────────────────────────────────────────
 
+  const greeting = getEditorialGreeting(instances.length, due.length);
+  const dateOverline = getDateOverline();
+  const totalConflicts = Object.values(conflictCounts).reduce((s, n) => s + n, 0);
+
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-gray-800">Your Tasks</h1>
-        <div className="flex items-center gap-2">
-          {ViewToggle()}
-          <Link href="/tasks/new" className="text-sm bg-pink-500 text-white font-medium rounded-lg px-3 py-1.5">
-            + New
-          </Link>
+    <div className="space-y-8">
+      {/* Editorial header */}
+      <header className="pb-2">
+        <p className="label-overline mb-2">{dateOverline}</p>
+        <h1 className="font-display text-4xl text-charcoal leading-tight mb-2">{greeting}</h1>
+        <div className="flex items-center gap-3 flex-wrap">
+          <p className="text-warm-mid text-sm">{instances.length} ritual{instances.length !== 1 ? 's' : ''} on the horizon</p>
+          {totalConflicts > 0 && (
+            <span className="text-xs bg-dust-lt text-charcoal rounded-pill px-2.5 py-1">
+              {totalConflicts} overlap{totalConflicts !== 1 ? 's' : ''}
+            </span>
+          )}
+          <div className="ml-auto flex items-center gap-2">
+            {ViewToggle()}
+            <Link href="/tasks/new" className="text-sm bg-charcoal text-cream font-medium rounded-pill px-4 py-1.5 hover:bg-charcoal/90">
+              + Add
+            </Link>
+          </div>
         </div>
-      </div>
+      </header>
+
+      {/* Suggestions */}
+      {(conflicts.length > 0 || syncs.length > 0) && (
+        <div className="bg-stone border border-glow-border rounded-lg shadow-card overflow-hidden">
+          <button
+            onClick={() => setSuggestionsOpen(o => !o)}
+            className="w-full flex items-center justify-between px-5 py-4 hover:bg-taupe transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <p className="label-overline">Suggestions</p>
+              <span className="text-xs font-medium bg-dust-lt text-charcoal rounded-pill px-2 py-0.5">
+                {conflicts.length + syncs.length}
+              </span>
+            </div>
+            <span className="text-warm-light text-xs">{suggestionsOpen ? '▲' : '▼'}</span>
+          </button>
+
+          {suggestionsOpen && (
+            <div className="px-5 pb-5 border-t border-glow-border pt-4 space-y-4">
+              {conflicts.map(s => (
+                <div key={`${s.taskA.id}__${s.taskB.id}`} className="border-l-[3px] border-conflict pl-4 py-1 space-y-2">
+                  <p className="label-overline" style={{ color: 'var(--color-accent-dust)' }}>Overlap</p>
+                  <p className="text-sm text-charcoal">{s.suggestionText ?? `${s.taskA.name} and ${s.taskB.name} may conflict.`}</p>
+                  <div className="flex gap-4 items-center">
+                    {s.taskA.routine_id && (
+                      <Link href={`/routines/${s.taskA.routine_id}`} className="text-xs text-charcoal underline-offset-2 hover:underline font-medium">
+                        Set rule →
+                      </Link>
+                    )}
+                    <button onClick={() => handleDismiss(s)} className="text-xs text-warm-light hover:text-charcoal">Dismiss</button>
+                  </div>
+                </div>
+              ))}
+              {syncs.map(s => (
+                <div key={`${s.taskA.id}__${s.taskB.id}`} className="border-l-[3px] border-sage pl-4 py-1 space-y-2">
+                  <p className="label-overline" style={{ color: 'var(--color-accent-sage)' }}>Sync</p>
+                  <p className="text-sm text-charcoal">{s.suggestionText ?? `${s.taskA.name} and ${s.taskB.name} are often done together.`}</p>
+                  <div className="flex gap-4 items-center">
+                    {(s.taskA.routine_id || s.taskB.routine_id) && (
+                      <Link href={`/routines/${s.taskA.routine_id ?? s.taskB.routine_id}`} className="text-xs text-charcoal underline-offset-2 hover:underline font-medium">
+                        Add to routine →
+                      </Link>
+                    )}
+                    <button onClick={() => handleDismiss(s)} className="text-xs text-warm-light hover:text-charcoal">Dismiss</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Spending section */}
       {SpendingSection()}
@@ -1009,8 +1227,16 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
 
 function Modal({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 flex items-end sm:items-center justify-center z-50 p-4"
+      style={{ background: 'rgba(44,42,38,0.4)', backdropFilter: 'blur(4px)' }}
+      onClick={onClose}
+    >
+      <div
+        className="bg-[#FFFFFF] rounded-lg w-full max-w-sm p-6 border border-glow-border"
+        style={{ boxShadow: 'var(--shadow-modal)' }}
+        onClick={e => e.stopPropagation()}
+      >
         {children}
       </div>
     </div>

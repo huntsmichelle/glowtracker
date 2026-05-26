@@ -41,6 +41,10 @@ import { addDays, format, parseISO, isAfter, isBefore } from 'date-fns';
 import { createClient } from '@/lib/supabase/client';
 import type { Task, Instance, InstanceStatus } from '@/types';
 
+function isTwiceDaily(task: Pick<Task, 'frequency_type'>): boolean {
+  return task.frequency_type === 'twice_daily';
+}
+
 // Lazy singleton — not evaluated at module import time.
 let _client: ReturnType<typeof createClient> | null = null;
 function db() {
@@ -147,10 +151,15 @@ export function calculateCountdownWindows(
 // --- Instance creation -------------------------------------------------------
 
 /**
- * Creates the first instance for a newly created STANDARD task, then
+ * Creates the first instance(s) for a newly created STANDARD task, then
  * pre-generates 6 months of projected instances beyond it.
+ * For twice_daily tasks, creates slot A + slot B on the anchor date.
  */
 export async function createFirstInstance(task: Task): Promise<Instance | null> {
+  if (isTwiceDaily(task)) {
+    return createFirstTwiceDailyInstances(task);
+  }
+
   const anchor = task.initial_anchor_date
     ? parseISO(task.initial_anchor_date)
     : today();
@@ -167,6 +176,8 @@ export async function createFirstInstance(task: Task): Promise<Instance | null> 
       interval_anchor_date: toISODate(anchor),
       status:               'upcoming',
       is_projected:         false,
+      scheduled_time:       task.scheduled_time ?? null,
+      time_of_day_label:    task.time_of_day_label ?? null,
     })
     .select()
     .single();
@@ -176,8 +187,6 @@ export async function createFirstInstance(task: Task): Promise<Instance | null> 
     return null;
   }
 
-  // Generate projections starting from the end of the upcoming window so
-  // they don't overlap with the confirmed instance.
   await generateProjectedInstances(task, parseISO(data.due_date_end));
 
   return data;
@@ -259,6 +268,11 @@ export async function completeInstance(
     return handlePostCompleteCountdown(task);
   }
 
+  if (isTwiceDaily(task) && updated) {
+    const next = await handleTwiceDailySlotDone(task, updated);
+    return { updated, next };
+  }
+
   // If the completed instance had override_next_date set, use that as the
   // scheduling anchor so the next instance starts from the user's chosen date.
   const anchor = updated?.override_next_date
@@ -302,6 +316,11 @@ export async function skipInstance(
 
   if (task.mode === 'countdown') {
     return { updated, next: null };
+  }
+
+  if (isTwiceDaily(task) && updated) {
+    const next = await handleTwiceDailySlotDone(task, updated);
+    return { updated, next };
   }
 
   // Promote the next projected to upcoming. If no projections exist (old data
@@ -440,7 +459,11 @@ function midpointDays(task: Pick<Task, 'interval_min_days' | 'interval_max_days'
  * that when promoted, calculateNextWindow(interval_anchor_date, task) produces
  * the correct min/max due window.
  */
-async function generateProjectedInstances(task: Task, anchorDate: Date): Promise<void> {
+export async function generateProjectedInstances(task: Task, anchorDate: Date): Promise<void> {
+  if (isTwiceDaily(task)) {
+    await generateTwiceDailyProjections(task, anchorDate);
+    return;
+  }
   if (task.mode !== 'standard') return;
 
   // Wipe stale projections before rebuilding.
@@ -562,6 +585,184 @@ async function createNextInstance(
     return null;
   }
   return data;
+}
+
+// ─── Twice-daily helpers ──────────────────────────────────────────────────────
+
+/**
+ * Creates slot A + slot B instances for the anchor date and seeds 6 months of
+ * projected pairs beyond it.
+ */
+async function createFirstTwiceDailyInstances(task: Task): Promise<Instance | null> {
+  const anchor = task.initial_anchor_date ? parseISO(task.initial_anchor_date) : today();
+  const dateStr = toISODate(anchor);
+
+  const { data, error } = await db()
+    .from('instances')
+    .insert([
+      {
+        task_id:           task.id,
+        user_id:           task.user_id,
+        due_date_start:    dateStr,
+        due_date_end:      dateStr,
+        interval_anchor_date: dateStr,
+        status:            'upcoming' as InstanceStatus,
+        is_projected:      false,
+        slot:              'a',
+        time_of_day_label: task.slot_a_label ?? 'Morning',
+        scheduled_time:    task.slot_a_time  ?? null,
+      },
+      {
+        task_id:           task.id,
+        user_id:           task.user_id,
+        due_date_start:    dateStr,
+        due_date_end:      dateStr,
+        interval_anchor_date: dateStr,
+        status:            'upcoming' as InstanceStatus,
+        is_projected:      false,
+        slot:              'b',
+        time_of_day_label: task.slot_b_label ?? 'Evening',
+        scheduled_time:    task.slot_b_time  ?? null,
+      },
+    ])
+    .select();
+
+  if (error) {
+    console.error('createFirstTwiceDailyInstances error:', error);
+    return null;
+  }
+
+  await generateTwiceDailyProjections(task, anchor);
+  return data?.[0] ?? null;
+}
+
+/**
+ * Rebuilds all projected instances for a twice_daily task starting the day
+ * after anchorDate, covering 6 months.
+ */
+async function generateTwiceDailyProjections(task: Task, anchorDate: Date): Promise<void> {
+  await db().from('instances').delete().eq('task_id', task.id).eq('is_projected', true);
+
+  const cutoff = addDays(today(), 182);
+  const inserts: Record<string, unknown>[] = [];
+
+  for (let n = 1; n <= 182; n++) {
+    const day = addDays(anchorDate, n);
+    if (isAfter(day, cutoff)) break;
+    const dateStr = toISODate(day);
+
+    inserts.push(
+      {
+        task_id:           task.id,
+        user_id:           task.user_id,
+        due_date_start:    dateStr,
+        due_date_end:      dateStr,
+        interval_anchor_date: toISODate(anchorDate),
+        status:            'projected' as InstanceStatus,
+        is_projected:      true,
+        slot:              'a',
+        time_of_day_label: task.slot_a_label ?? 'Morning',
+        scheduled_time:    task.slot_a_time  ?? null,
+      },
+      {
+        task_id:           task.id,
+        user_id:           task.user_id,
+        due_date_start:    dateStr,
+        due_date_end:      dateStr,
+        interval_anchor_date: toISODate(anchorDate),
+        status:            'projected' as InstanceStatus,
+        is_projected:      true,
+        slot:              'b',
+        time_of_day_label: task.slot_b_label ?? 'Evening',
+        scheduled_time:    task.slot_b_time  ?? null,
+      },
+    );
+  }
+
+  // Batch in chunks of 500 to stay within PostgREST limits
+  for (let i = 0; i < inserts.length; i += 500) {
+    const { error } = await db().from('instances').insert(inserts.slice(i, i + 500));
+    if (error) console.error('generateTwiceDailyProjections error:', error);
+  }
+}
+
+/**
+ * After one slot of a twice_daily pair is completed/skipped, checks whether
+ * the paired slot is also done. If so, promotes the next projected pair to
+ * upcoming. Returns the first promoted instance, or null if nothing to promote.
+ */
+async function handleTwiceDailySlotDone(
+  task: Task,
+  instance: Instance
+): Promise<Instance | null> {
+  const pairedSlot = instance.slot === 'a' ? 'b' : 'a';
+
+  const { data: paired } = await db()
+    .from('instances')
+    .select('id, status')
+    .eq('task_id', task.id)
+    .eq('due_date_start', instance.due_date_start)
+    .eq('slot', pairedSlot)
+    .not('is_projected', 'eq', true)
+    .limit(1)
+    .single();
+
+  const pairedDone =
+    paired?.status === 'completed' || paired?.status === 'skipped';
+
+  if (!pairedDone) return null;
+
+  return promoteTwiceDailyPair(task);
+}
+
+/**
+ * Promotes the earliest projected twice_daily pair (both slots for the same
+ * date) to 'upcoming'. Regenerates projections if the pool is exhausted.
+ */
+async function promoteTwiceDailyPair(task: Task): Promise<Instance | null> {
+  const { data: projections } = await db()
+    .from('instances')
+    .select('id, due_date_start, slot')
+    .eq('task_id', task.id)
+    .eq('is_projected', true)
+    .order('due_date_start', { ascending: true })
+    .limit(10);
+
+  if (!projections?.length) {
+    // Pool exhausted — rebuild from today and try again
+    await generateTwiceDailyProjections(task, today());
+    const { data: fresh } = await db()
+      .from('instances')
+      .select('id, due_date_start')
+      .eq('task_id', task.id)
+      .eq('is_projected', true)
+      .order('due_date_start', { ascending: true })
+      .limit(2);
+    if (!fresh?.length) return null;
+    const firstDate = fresh[0].due_date_start;
+    const ids = fresh.filter(p => p.due_date_start === firstDate).map(p => p.id);
+    const { data } = await db()
+      .from('instances')
+      .update({ status: 'upcoming', is_projected: false })
+      .in('id', ids)
+      .select();
+    return data?.[0] ?? null;
+  }
+
+  const firstDate = projections[0].due_date_start;
+  const ids = projections.filter(p => p.due_date_start === firstDate).map(p => p.id);
+
+  const { data, error } = await db()
+    .from('instances')
+    .update({ status: 'upcoming', is_projected: false })
+    .in('id', ids)
+    .select();
+
+  if (error) {
+    console.error('promoteTwiceDailyPair error:', error);
+    return null;
+  }
+  return data?.[0] ?? null;
 }
 
 /**

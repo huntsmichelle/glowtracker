@@ -34,28 +34,48 @@ export default async function TasksListPage() {
   }
 
   const sortedGroups = Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b));
+  const total = (tasksList ?? []).length;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-gray-800">Tasks</h1>
-        <Link href="/tasks/new" className="text-sm bg-pink-500 text-white font-medium rounded-lg px-3 py-1.5">
-          + New
+    <div className="space-y-8">
+      {/* Header */}
+      <div className="flex items-end justify-between">
+        <div>
+          <p className="label-overline mb-1">Library</p>
+          <h1 className="font-display text-3xl text-charcoal">Rituals</h1>
+          {total > 0 && (
+            <p className="text-warm-mid text-sm mt-1">{total} ritual{total !== 1 ? 's' : ''} in your library</p>
+          )}
+        </div>
+        <Link
+          href="/tasks/new"
+          className="bg-charcoal text-cream text-sm font-medium rounded-pill px-5 py-2.5 hover:bg-charcoal/90"
+        >
+          + Add Ritual
         </Link>
       </div>
 
-      {(tasksList ?? []).length === 0 ? (
-        <div className="text-center py-16">
-          <p className="text-gray-400 text-sm mb-4">No tasks yet.</p>
-          <Link href="/tasks/new" className="inline-block bg-pink-500 text-white text-sm font-medium rounded-lg px-4 py-2.5">
-            Create your first task
+      {total === 0 ? (
+        <div className="text-center py-20">
+          <div className="w-10 h-10 mx-auto mb-4 text-warm-light">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zM12 6v6l4 2" />
+            </svg>
+          </div>
+          <h2 className="font-display text-2xl text-charcoal mb-2">Your shelf is quiet.</h2>
+          <p className="text-warm-mid text-sm mb-8">Add your first ritual to begin keeping rhythm.</p>
+          <Link
+            href="/tasks/new"
+            className="inline-block bg-charcoal text-cream text-sm font-medium rounded-pill px-6 py-3 hover:bg-charcoal/90"
+          >
+            + Add Ritual
           </Link>
         </div>
       ) : (
-        <>
+        <div className="space-y-8">
           {sortedGroups.map(([catName, items]) => (
             <section key={catName}>
-              <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">{catName}</h2>
+              <p className="label-overline mb-3">{catName}</p>
               <div className="space-y-2">
                 {items.map(t => <TaskRowItem key={t.id} task={t} />)}
               </div>
@@ -63,13 +83,13 @@ export default async function TasksListPage() {
           ))}
           {uncategorized.length > 0 && (
             <section>
-              <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Other</h2>
+              <p className="label-overline mb-3">Other</p>
               <div className="space-y-2">
                 {uncategorized.map(t => <TaskRowItem key={t.id} task={t} />)}
               </div>
             </section>
           )}
-        </>
+        </div>
       )}
     </div>
   );
@@ -86,24 +106,24 @@ function TaskRowItem({ task }: { task: TaskRow }) {
   return (
     <Link
       href={`/tasks/${task.id}`}
-      className="flex items-center justify-between bg-white rounded-xl border border-gray-100 shadow-sm px-4 py-3 hover:border-pink-200 transition-colors"
+      className="flex items-center justify-between bg-stone border border-glow-border rounded-lg shadow-card px-4 py-3.5 card-lift"
     >
       <div className="flex items-center gap-3 min-w-0">
         <span
-          className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-          style={{ backgroundColor: task.category?.color ?? '#6B7280' }}
+          className="w-2 h-2 rounded-full flex-shrink-0"
+          style={{ backgroundColor: task.category?.color ?? '#9E9890' }}
         />
-        <span className="text-sm font-medium text-gray-800 truncate">{task.name}</span>
+        <span className="text-sm font-medium text-charcoal truncate">{task.name}</span>
         {task.routine && (
           <span
-            className="hidden sm:inline-flex items-center text-xs font-medium px-1.5 py-0.5 rounded-full text-white flex-shrink-0"
+            className="hidden sm:inline-flex items-center text-[10px] font-medium px-2 py-0.5 rounded-pill text-white flex-shrink-0"
             style={{ backgroundColor: task.routine.color }}
           >
             {task.routine.name}
           </span>
         )}
       </div>
-      <span className="text-xs text-gray-400 flex-shrink-0 ml-2">{intervalLabel}{modeLabel}</span>
+      <span className="text-xs text-warm-light flex-shrink-0 ml-3">{intervalLabel}{modeLabel}</span>
     </Link>
   );
 }

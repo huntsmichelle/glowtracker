@@ -6,17 +6,22 @@
 //   Instance = a single scheduled occurrence of a task
 //   Routine  = a named collection of related Tasks (Phase 2)
 
-export type InstanceStatus = 'upcoming' | 'due' | 'completed' | 'skipped' | 'snoozed' | 'projected';
-export type LinkResolution = 'do_both' | 'reset' | 'delay';
-export type TaskMode       = 'standard' | 'countdown';
-export type IntervalType   = 'exact' | 'range';
-export type IntervalUnit   = 'days' | 'weeks';
+export type InstanceStatus  = 'upcoming' | 'due' | 'completed' | 'skipped' | 'snoozed' | 'projected';
+export type TaskMode        = 'standard' | 'countdown';
+export type FrequencyType   = 'interval' | 'daily' | 'twice_daily';
+export type IntervalType    = 'exact' | 'range';
+export type IntervalUnit    = 'days' | 'weeks';
+export type NoConflictOrder = 'a_first' | 'b_first';
 
 // ─── Routine (Phase 2 — task group) ──────────────────────────────────────────
 
-export type ConflictResolution = 'ask' | 'do_both' | 'reset' | 'delay';
+export type ConflictResolution = 'ask' | 'no_conflict' | 'auto_adjust' | 'skip_one';
 export type DelayTarget        = 'a' | 'b';
+export type AdjustDirection    = 'forward' | 'back';
+export type SkipTarget         = 'a' | 'b';
 export type ConflictStatus     = 'pending' | 'resolved';
+
+export type ConflictIntent = 'unset' | 'independent' | 'managed';
 
 export interface Routine {
   id: string;
@@ -28,6 +33,7 @@ export interface Routine {
   is_template: boolean;
   is_public: boolean;
   template_source_id: string | null;
+  conflict_intent: ConflictIntent;
   created_at: string;
   updated_at: string;
   // joined
@@ -43,6 +49,13 @@ export interface RoutineTaskPair {
   default_resolution: ConflictResolution;
   default_delay_days: number | null;
   delay_target: DelayTarget | null;
+  adjust_direction: AdjustDirection | null;
+  adjust_snap_back: boolean | null;
+  skip_target: SkipTarget | null;
+  // No-conflict order (item 5)
+  no_conflict_order: NoConflictOrder | null;
+  no_conflict_time_a: string | null;  // HH:MM
+  no_conflict_time_b: string | null;  // HH:MM
   created_at: string;
   // joined
   task_a?: Task;
@@ -62,6 +75,13 @@ export interface RoutineConflict {
   resolved_at: string | null;
   resolved_by_delay_days: number | null;
   resolved_delay_target: DelayTarget | null;
+  adjust_direction: AdjustDirection | null;
+  adjust_snap_back: boolean | null;
+  skip_target: SkipTarget | null;
+  // No-conflict order audit (item 5)
+  applied_order: NoConflictOrder | null;
+  applied_time_a: string | null;
+  applied_time_b: string | null;
   created_at: string;
   // joined
   pair?: RoutineTaskPair;
@@ -118,6 +138,15 @@ export interface Task {
   initial_anchor_date: string | null;
   // Reminder notes (shown on instance detail; will be sent with notifications)
   reminder_notes: string | null;
+  // Scheduling frequency (item 4)
+  frequency_type: FrequencyType;
+  slot_a_label: string | null;   // twice_daily: label for slot A (default "Morning")
+  slot_a_time: string | null;    // HH:MM
+  slot_b_label: string | null;
+  slot_b_time: string | null;
+  // Time of day (item 3)
+  scheduled_time: string | null;       // HH:MM
+  time_of_day_label: string | null;    // e.g. "After shower"
   // Routine membership (Phase 2)
   routine_id: string | null;
   // Service provider
@@ -158,6 +187,13 @@ export interface Instance {
   event_date: string | null;
   days_before_event: number | null;
   override_next_date: string | null;
+  // Auto-Adjust snap-back: original window start before the instance was moved
+  original_scheduled_date: string | null;
+  // Time of day (item 3) — inherited from task, overridable per instance
+  scheduled_time: string | null;
+  time_of_day_label: string | null;
+  // Twice-daily slot identifier (item 4): 'a' | 'b' | null
+  slot: 'a' | 'b' | null;
   created_at: string;
   updated_at: string;
   // joined
@@ -223,11 +259,21 @@ export interface TaskFormValues {
   mode: TaskMode;
   default_cost: string;           // currency string, empty = no default
   reminder_notes: string;
-  // Interval — stored as days in DB; UI lets user choose unit and exact vs range
+  // Frequency (item 4)
+  frequencyType: FrequencyType;
+  // Interval — used when frequencyType === 'interval'; stored as days in DB
   intervalType: IntervalType;
   intervalMin: number;
   intervalMax: number;
   intervalUnit: IntervalUnit;
+  // Twice-daily slots (item 4)
+  slotALabel: string;
+  slotATime: string;   // HH:MM or ''
+  slotBLabel: string;
+  slotBTime: string;   // HH:MM or ''
+  // Time of day (item 3) — for interval/daily frequency
+  scheduledTime: string;        // HH:MM or ''
+  timeOfDayLabel: string;       // max 20 chars, '' = no label
   default_reminder_days: number;
   // Standard mode anchor
   initial_anchor_date: string;    // empty string = today

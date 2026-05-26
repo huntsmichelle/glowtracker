@@ -47,8 +47,13 @@ CREATE INDEX IF NOT EXISTS routines_user_template_idx
 
 ALTER TABLE routines ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "Users manage own routines"
-  ON routines FOR ALL USING (user_id = auth.uid());
+DROP POLICY IF EXISTS "Users manage own routines" ON routines;
+CREATE POLICY "Users manage own routines"
+   ON routines
+   FOR ALL 
+   TO authenticated
+   USING (user_id = auth.uid())
+   WITH CHECK (user_id = auth.uid());
 
 CREATE TRIGGER routines_updated_at
   BEFORE UPDATE ON routines
@@ -97,8 +102,13 @@ CREATE INDEX IF NOT EXISTS routine_task_pairs_user_id_idx
 
 ALTER TABLE routine_task_pairs ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "Users manage own routine_task_pairs"
-  ON routine_task_pairs FOR ALL USING (user_id = auth.uid());
+DROP POLICY IF EXISTS "Users manage own routine_task_pairs" ON routine_task_pairs;
+CREATE POLICY "Users manage own routine_task_pairs"
+   ON routine_task_pairs
+   FOR ALL 
+   TO authenticated
+   USING (user_id = auth.uid())
+   WITH CHECK (user_id = auth.uid());
 
 
 -- ────────────────────────────────────────────────────────────
@@ -133,5 +143,10 @@ CREATE INDEX IF NOT EXISTS routine_conflicts_pair_id_idx
 
 ALTER TABLE routine_conflicts ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "Users manage own routine_conflicts"
-  ON routine_conflicts FOR ALL USING (user_id = auth.uid());
+DROP POLICY IF EXISTS "Users manage own routine_conflicts" ON routine_conflicts;
+CREATE POLICY "Users manage own routine_conflicts"
+   ON routine_conflicts
+   FOR ALL 
+   TO authenticated
+   USING (user_id = auth.uid())
+   WITH CHECK (user_id = auth.uid());

@@ -18,8 +18,8 @@ export default async function NewTaskPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-bold text-gray-800">New Task</h1>
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+      <h1 className="font-display text-3xl text-charcoal">New Ritual</h1>
+      <div className="bg-stone border border-glow-border rounded-lg shadow-card p-5">
         <TaskForm
           categories={categories ?? []}
           userId={user.id}

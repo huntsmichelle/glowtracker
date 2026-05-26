@@ -1,26 +1,191 @@
 @import "tailwindcss";
 
+/* ── Design Tokens (CSS variables — used in CSS rules) ─────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --color-bg-base:        #efe9dd;
+  --color-bg-surface:     #f6f1e6;
+  --color-bg-sunken:      #ede8db;
+  --color-bg-overlay:     #f6f1e6;
+  --color-text-primary:   #2b2823;
+  --color-text-secondary: #6b665e;
+  --color-text-tertiary:  #a8a297;
+  --color-text-inverse:   #efe9dd;
+  --color-accent-sage:    #8ea394;
+  --color-accent-sage-lt: #c6d8cc;
+  --color-accent-refresh: #c08a6e;
+  --color-accent-refresh-lt: #e8c9b8;
+  --color-accent-bluegrey: #93a3b1;
+  --color-accent-taupe:   #b5a89a;
+  --color-border:         #cdc6b6;
+  --color-border-strong:  #a8a297;
+  --shadow-card:   0 1px 3px rgba(43,40,35,0.06), 0 1px 2px rgba(43,40,35,0.04);
+  --shadow-lifted: 0 4px 12px rgba(43,40,35,0.08), 0 2px 4px rgba(43,40,35,0.05);
+  --shadow-modal:  0 20px 60px rgba(43,40,35,0.15), 0 8px 20px rgba(43,40,35,0.08);
+  --font-display: 'EB Garamond', 'Georgia', serif;
+  --font-body:    'Inter', system-ui, sans-serif;
+  --font-hand:    'Caveat', cursive;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* ── Tailwind v4 Theme Extension ───────────────────────────────────── */
+@theme {
+  /* Core palette */
+  --color-cream:       #efe9dd;
+  --color-stone:       #f6f1e6;
+  --color-taupe:       #ede8db;
+  --color-charcoal:    #2b2823;
+
+  /* Signal / accent */
+  --color-sage:        #8ea394;
+  --color-sage-lt:     #c6d8cc;
+  --color-dust:        #c08a6e;
+  --color-dust-lt:     #e8c9b8;
+  --color-refresh:     #c08a6e;
+  --color-refresh-lt:  #e8c9b8;
+  --color-bluegrey:    #93a3b1;
+
+  /* Text ramp */
+  --color-warm-mid:    #6b665e;
+  --color-warm-light:  #a8a297;
+
+  /* Borders */
+  --color-glow-border: #cdc6b6;
+  --color-conflict:    #c08a6e;
+
+  /* Semantic aliases (new names, same values) */
+  --color-paper-soft:  #f6f1e6;
+  --color-ink:         #2b2823;
+  --color-ink-soft:    #6b665e;
+  --color-ink-faint:   #a8a297;
+  --color-divider:     #cdc6b6;
+
+  /* Radius scale */
+  --radius-sm:   6px;
+  --radius-md:   10px;
+  --radius-lg:   16px;
+  --radius-pill: 100px;
+
+  /* Named shadows */
+  --shadow-card:   0 1px 3px rgba(43,40,35,0.06), 0 1px 2px rgba(43,40,35,0.04);
+  --shadow-lifted: 0 4px 12px rgba(43,40,35,0.08), 0 2px 4px rgba(43,40,35,0.05);
+  --shadow-modal:  0 20px 60px rgba(43,40,35,0.15), 0 8px 20px rgba(43,40,35,0.08);
+
+  /* Fonts */
+  --font-display: 'EB Garamond', 'Georgia', serif;
+  --font-body:    'Inter', system-ui, sans-serif;
+  --font-hand:    'Caveat', cursive;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ── Base styles ───────────────────────────────────────────────────── */
+*, *::before, *::after {
+  transition-property: color, background-color, border-color, box-shadow, transform;
+  transition-duration: 0.15s;
+  transition-timing-function: ease;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-bg-base);
+  color: var(--color-text-primary);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Subtle paper texture */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.025'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 0;
+}
+
+h1, h2 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+h3, h4, h5, h6 {
+  font-family: var(--font-body);
+  font-weight: 500;
+}
+
+/* ── Utility classes ────────────────────────────────────────────────── */
+.label-overline {
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.font-hand {
+  font-family: var(--font-hand);
+}
+
+.stat-number {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+/* Card lift on hover */
+.card-lift {
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+.card-lift:hover {
+  box-shadow: var(--shadow-lifted);
+  transform: translateY(-1px);
+}
+
+/* Button press */
+button:active {
+  transform: scale(0.98);
+}
+
+/* Hatched placeholder (product images) */
+.product-image-placeholder {
+  background-color: var(--color-bg-sunken);
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--color-border) 0,
+    var(--color-border) 1px,
+    transparent 0,
+    transparent 50%
+  );
+  background-size: 8px 8px;
+}
+
+/* Input / select / textarea base */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="date"],
+input[type="time"],
+textarea,
+select {
+  background: var(--color-bg-sunken);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  color: var(--color-text-primary);
+  font-family: var(--font-body);
+  padding: 10px 14px;
+  font-size: 14px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--color-border-strong);
+  background: var(--color-bg-surface);
+}
+
+::placeholder {
+  color: var(--color-text-tertiary);
 }

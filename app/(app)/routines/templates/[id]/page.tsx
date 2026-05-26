@@ -32,33 +32,33 @@ export default async function RoutineTemplateDetailPage({ params }: Props) {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2">
-        <Link href="/routines" className="text-sm text-gray-400 hover:text-gray-600">
+        <Link href="/routines" className="text-sm text-warm-light hover:text-charcoal">
           Routines
         </Link>
-        <span className="text-gray-300">/</span>
-        <Link href="/routines/templates" className="text-sm text-gray-400 hover:text-gray-600">
+        <span className="text-warm-light">/</span>
+        <Link href="/routines/templates" className="text-sm text-warm-light hover:text-charcoal">
           Templates
         </Link>
-        <span className="text-gray-300">/</span>
-        <span className="text-sm text-gray-600 truncate">{t.name}</span>
+        <span className="text-warm-light">/</span>
+        <span className="text-sm text-warm-mid truncate">{t.name}</span>
       </div>
 
       <div className="flex items-center gap-3">
         <span className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: t.color }} />
-        <h1 className="text-xl font-bold text-gray-800">{t.name}</h1>
+        <h1 className="font-display text-3xl text-charcoal">{t.name}</h1>
       </div>
 
       {t.description && (
-        <p className="text-sm text-gray-500">{t.description}</p>
+        <p className="text-sm text-warm-mid">{t.description}</p>
       )}
 
       {(t.tasks ?? []).length > 0 && (
         <div>
-          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Includes</h2>
+          <p className="label-overline mb-2">Includes</p>
           <div className="space-y-1.5">
             {(t.tasks ?? []).map(task => (
-              <div key={task.id} className="flex items-center gap-2 px-3 py-2 bg-white rounded-lg border border-gray-100 text-sm text-gray-700">
-                <span className="w-2 h-2 rounded-full bg-gray-300 flex-shrink-0" />
+              <div key={task.id} className="flex items-center gap-2 px-3 py-2 bg-stone border border-glow-border rounded-lg text-sm text-charcoal">
+                <span className="w-2 h-2 rounded-full bg-glow-border flex-shrink-0" />
                 {task.name}
               </div>
             ))}

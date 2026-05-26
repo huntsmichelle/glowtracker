@@ -7,8 +7,8 @@ import { createClient } from '@/lib/supabase/client';
 import type { Routine } from '@/types';
 
 const PRESET_COLORS = [
-  '#EC4899', '#8B5CF6', '#3B82F6', '#10B981',
-  '#F59E0B', '#EF4444', '#6366F1', '#14B8A6',
+  '#8A9E8C', '#A89880', '#6B6660', '#2C2A26',
+  '#C4D4C5', '#D4C8B8', '#9E9890', '#E5DFD4',
 ];
 
 interface Props {
@@ -42,11 +42,7 @@ export default function RoutineEditClient({ routine }: Props) {
       })
       .eq('id', routine.id);
 
-    if (err) {
-      setError(err.message);
-      setSaving(false);
-      return;
-    }
+    if (err) { setError(err.message); setSaving(false); return; }
 
     router.push(`/routines/${routine.id}`);
   }
@@ -61,47 +57,47 @@ export default function RoutineEditClient({ routine }: Props) {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2">
-        <Link href={`/routines/${routine.id}`} className="text-sm text-gray-400 hover:text-gray-600">
+        <Link href={`/routines/${routine.id}`} className="text-sm text-warm-light hover:text-charcoal">
           {routine.name}
         </Link>
-        <span className="text-gray-300">/</span>
-        <span className="text-sm text-gray-600">Edit</span>
+        <span className="text-warm-light">/</span>
+        <span className="text-sm text-warm-mid">Edit</span>
       </div>
 
-      <h1 className="text-xl font-bold text-gray-800">Edit Routine</h1>
+      <h1 className="font-display text-3xl text-charcoal">Edit Routine</h1>
 
       <form onSubmit={handleSubmit} className="space-y-5">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+          <label className="block text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide">Name</label>
           <input
             type="text"
             value={name}
             onChange={e => setName(e.target.value)}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300"
+            className="w-full"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Description <span className="text-gray-400 font-normal">(optional)</span>
+          <label className="block text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide">
+            Description <span className="normal-case font-normal tracking-normal">(optional)</span>
           </label>
           <textarea
             value={description}
             onChange={e => setDescription(e.target.value)}
             rows={2}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300 resize-none"
+            className="w-full resize-none"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Color</label>
+          <label className="block text-xs font-medium text-warm-mid mb-2 uppercase tracking-wide">Color</label>
           <div className="flex gap-2 flex-wrap">
             {PRESET_COLORS.map(c => (
               <button
                 key={c}
                 type="button"
                 onClick={() => setColor(c)}
-                className="w-8 h-8 rounded-full transition-transform"
+                className="w-8 h-8 rounded-full transition-transform border border-glow-border"
                 style={{
                   backgroundColor: c,
                   outline: color === c ? `3px solid ${c}` : 'none',
@@ -113,47 +109,48 @@ export default function RoutineEditClient({ routine }: Props) {
           </div>
         </div>
 
-        {error && <p className="text-red-500 text-sm">{error}</p>}
+        {error && (
+          <p className="text-sm text-charcoal bg-dust-lt border border-dust rounded-md px-3 py-2">{error}</p>
+        )}
 
         <div className="flex gap-3 pt-2">
           <button
             type="submit"
             disabled={saving}
-            className="bg-pink-500 text-white text-sm font-medium rounded-lg px-4 py-2.5 disabled:opacity-50"
+            className="bg-charcoal text-cream text-sm font-medium rounded-pill px-5 py-2.5 disabled:opacity-50 hover:bg-charcoal/90"
           >
             {saving ? 'Saving…' : 'Save Changes'}
           </button>
-          <Link href={`/routines/${routine.id}`} className="text-sm text-gray-500 hover:text-gray-700 px-4 py-2.5">
+          <Link href={`/routines/${routine.id}`} className="text-sm text-warm-mid hover:text-charcoal px-4 py-2.5">
             Cancel
           </Link>
         </div>
       </form>
 
-      {/* Delete section */}
-      <div className="border-t border-gray-100 pt-6">
-        <h3 className="text-sm font-medium text-gray-700 mb-2">Danger Zone</h3>
-        <p className="text-xs text-gray-400 mb-3">
-          Deleting a routine removes it and all its conflict records. Tasks remain but lose their routine membership.
+      <div className="border-t border-glow-border pt-6">
+        <p className="text-xs font-medium text-warm-mid mb-1 uppercase tracking-wide">Remove</p>
+        <p className="text-xs text-warm-light mb-3">
+          Removing a routine deletes it and all its overlap records. Rituals remain but lose their routine membership.
         </p>
         {!confirmDelete ? (
           <button
             onClick={() => setConfirmDelete(true)}
-            className="text-sm text-red-500 border border-red-200 rounded-lg px-4 py-2"
+            className="text-sm text-warm-mid border border-glow-border rounded-pill px-4 py-2 hover:bg-taupe transition-colors"
           >
-            Delete Routine
+            Remove Routine
           </button>
         ) : (
           <div className="flex items-center gap-3">
             <button
               onClick={handleDelete}
               disabled={deleting}
-              className="text-sm bg-red-500 text-white rounded-lg px-4 py-2 disabled:opacity-50"
+              className="text-sm bg-dust text-cream rounded-pill px-4 py-2 disabled:opacity-50 hover:bg-dust/90"
             >
-              {deleting ? 'Deleting…' : 'Yes, delete'}
+              {deleting ? 'Removing…' : 'Yes, remove'}
             </button>
             <button
               onClick={() => setConfirmDelete(false)}
-              className="text-sm text-gray-500"
+              className="text-sm text-warm-light hover:text-charcoal"
             >
               Cancel
             </button>

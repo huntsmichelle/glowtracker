@@ -1,129 +1,20 @@
-'use client';
+import { createClient } from '@/lib/supabase/server';
+import { redirect } from 'next/navigation';
+import NewRoutineClient from '@/components/NewRoutineClient';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { createClient } from '@/lib/supabase/client';
+export const dynamic = 'force-dynamic';
 
-const PRESET_COLORS = [
-  '#EC4899', '#8B5CF6', '#3B82F6', '#10B981',
-  '#F59E0B', '#EF4444', '#6366F1', '#14B8A6',
-];
+export default async function NewRoutinePage() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
 
-export default function NewRoutinePage() {
-  const router = useRouter();
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [color, setColor] = useState('#EC4899');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  if (!user) redirect('/login');
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!name.trim()) { setError('Name is required'); return; }
+  const { data: categories } = await supabase
+    .from('categories')
+    .select('*')
+    .or(`user_id.eq.${user.id},user_id.is.null`)
+    .order('name');
 
-    setSaving(true);
-    setError('');
-
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { router.push('/login'); return; }
-
-    const { data, error: err } = await supabase
-      .from('routines')
-      .insert({
-        user_id: user.id,
-        name: name.trim(),
-        description: description.trim() || null,
-        color,
-        is_template: false,
-        is_public: false,
-      })
-      .select('id')
-      .single();
-
-    if (err) {
-      setError(err.message);
-      setSaving(false);
-      return;
-    }
-
-    router.push(`/routines/${data.id}`);
-  }
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Link href="/routines" className="text-gray-400 hover:text-gray-600 text-sm">
-          Routines
-        </Link>
-        <span className="text-gray-300">/</span>
-        <span className="text-sm text-gray-600">New Routine</span>
-      </div>
-
-      <h1 className="text-xl font-bold text-gray-800">New Routine</h1>
-
-      <form onSubmit={handleSubmit} className="space-y-5">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-          <input
-            type="text"
-            value={name}
-            onChange={e => setName(e.target.value)}
-            placeholder="e.g. Skincare Morning Routine"
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Description <span className="text-gray-400 font-normal">(optional)</span></label>
-          <textarea
-            value={description}
-            onChange={e => setDescription(e.target.value)}
-            rows={2}
-            placeholder="What is this routine for?"
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300 resize-none"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Color</label>
-          <div className="flex gap-2 flex-wrap">
-            {PRESET_COLORS.map(c => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setColor(c)}
-                className="w-8 h-8 rounded-full transition-transform"
-                style={{
-                  backgroundColor: c,
-                  outline: color === c ? `3px solid ${c}` : 'none',
-                  outlineOffset: '2px',
-                  transform: color === c ? 'scale(1.15)' : 'scale(1)',
-                }}
-              />
-            ))}
-          </div>
-        </div>
-
-        {error && <p className="text-red-500 text-sm">{error}</p>}
-
-        <div className="flex gap-3 pt-2">
-          <button
-            type="submit"
-            disabled={saving}
-            className="bg-pink-500 text-white text-sm font-medium rounded-lg px-4 py-2.5 disabled:opacity-50"
-          >
-            {saving ? 'Creating…' : 'Create Routine'}
-          </button>
-          <Link
-            href="/routines"
-            className="text-sm text-gray-500 hover:text-gray-700 px-4 py-2.5"
-          >
-            Cancel
-          </Link>
-        </div>
-      </form>
-    </div>
-  );
+  return <NewRoutineClient categories={categories ?? []} userId={user.id} />;
 }

@@ -2,17 +2,24 @@
  * Conflict Resolution Engine
  *
  * Applies a user-chosen resolution to a pending routine_conflict.
- * Called from the ConflictModal after the user picks an option.
+ * Called from ConflictModal after the user picks an option.
  *
- * After applying, re-runs conflict detection for the affected pair
- * to catch any secondary overlaps the resolution may have created.
+ * Resolution types:
+ *   no_conflict  — both tasks stay as scheduled, no changes
+ *   ask          — conflict is dismissed; future conflicts will re-prompt
+ *   skip_one     — chosen task's instance is skipped; both tasks reanchor from conflict date
+ *   auto_adjust  — chosen task's instance is shifted forward/back by N days;
+ *                  optionally snaps back to original rhythm after the adjustment
  */
 
 import { addDays, parseISO } from 'date-fns';
 import { createClient } from '@/lib/supabase/client';
-import { today, toISODate, calculateNextWindow } from '@/lib/instanceEngine';
+import { today, toISODate, calculateNextWindow, generateProjectedInstances } from '@/lib/instanceEngine';
 import { detectPairConflicts } from '@/lib/conflictDetection';
-import type { RoutineConflict, ConflictResolution, DelayTarget, Task } from '@/types';
+import type {
+  RoutineConflict, ConflictResolution,
+  DelayTarget, AdjustDirection, SkipTarget, NoConflictOrder, Task,
+} from '@/types';
 
 let _client: ReturnType<typeof createClient> | null = null;
 function db() {
@@ -23,116 +30,127 @@ function db() {
 // ─── Resolution options ───────────────────────────────────────────────────────
 
 /**
- * Do Both — keeps both instances on their current dates. Marks the conflict
- * resolved without changing any instance.
+ * No Conflict — both tasks stay on the conflict date.
+ * Neither task's cadence changes; no instance modifications.
  */
-export async function resolveDoingBoth(conflict: RoutineConflict): Promise<void> {
-  await markResolved(conflict.id, 'do_both', {});
+export async function resolveNoConflict(conflict: RoutineConflict): Promise<void> {
+  await markResolved(conflict.id, 'no_conflict', {});
 }
 
 /**
- * Reset — one task's schedule "wins" and both tasks' next projections are
- * recalculated from the winning instance's anchor date.
- *
- * @param winnerInstanceId - which instance's due_date_start becomes the anchor
+ * Ask — dismiss this conflict record without changing anything.
+ * Future conflicts for this pair will create new pending records (ask again).
  */
-export async function resolveWithReset(
+export async function resolveAsAsked(conflict: RoutineConflict): Promise<void> {
+  await markResolved(conflict.id, 'ask', {});
+}
+
+/**
+ * Skip One — the chosen task's instance is skipped (status='skipped').
+ * Both tasks then reanchor their cadence to the conflict date and
+ * regenerate projected instances forward from there.
+ */
+export async function resolveSkipOne(
   conflict: RoutineConflict,
-  winnerInstanceId: string
+  skipTarget: SkipTarget
 ): Promise<void> {
-  const loserInstanceId =
-    winnerInstanceId === conflict.instance_a_id
-      ? conflict.instance_b_id
-      : conflict.instance_a_id;
+  const skipInstanceId = skipTarget === 'a' ? conflict.instance_a_id : conflict.instance_b_id;
+  const keepInstanceId = skipTarget === 'a' ? conflict.instance_b_id : conflict.instance_a_id;
 
-  // Fetch winner instance to get its anchor
-  const { data: winner } = await db()
-    .from('instances')
-    .select('due_date_start, task_id')
-    .eq('id', winnerInstanceId)
-    .single();
+  const [{ data: skipInst }, { data: keepInst }] = await Promise.all([
+    db().from('instances').select('task_id, due_date_start, due_date_end').eq('id', skipInstanceId).single(),
+    db().from('instances').select('task_id, due_date_start, due_date_end').eq('id', keepInstanceId).single(),
+  ]);
+  if (!skipInst || !keepInst) return;
 
-  if (!winner) return;
-
-  const anchor    = parseISO(winner.due_date_start);
-  const winnerTaskId = winner.task_id;
-
-  // Fetch loser instance
-  const { data: loser } = await db()
-    .from('instances')
-    .select('task_id')
-    .eq('id', loserInstanceId)
-    .single();
-
-  if (!loser) return;
-
-  // Fetch both tasks (needed to regenerate windows)
   const { data: tasksData } = await db()
-    .from('tasks')
-    .select('*')
-    .in('id', [winnerTaskId, loser.task_id]);
-
+    .from('tasks').select('*')
+    .in('id', [skipInst.task_id, keepInst.task_id]);
   if (!tasksData?.length) return;
 
-  const winnerTask = tasksData.find(t => t.id === winnerTaskId) as Task;
-  const loserTask  = tasksData.find(t => t.id === loser.task_id) as Task;
+  const skipTask = tasksData.find(t => t.id === skipInst.task_id) as Task;
+  const keepTask = tasksData.find(t => t.id === keepInst.task_id) as Task;
+  const anchor   = parseISO(conflict.conflict_date);
 
-  // Rebuild the loser task's next projected window from the winner's anchor.
-  // Delete all projected instances for the loser and create a new upcoming one.
-  await db()
-    .from('instances')
-    .delete()
-    .eq('task_id', loserTask.id)
-    .eq('is_projected', true);
+  // 1. Skip the chosen instance
+  await db().from('instances').update({ status: 'skipped' }).eq('id', skipInstanceId);
 
-  const newWindow = calculateNextWindow(anchor, loserTask);
-
-  await db().from('instances').update({
-    due_date_start: newWindow.due_date_start,
-    due_date_end:   newWindow.due_date_end,
+  // 2. For skipped task: delete projections, create new upcoming from conflict_date
+  await db().from('instances').delete().eq('task_id', skipTask.id).eq('is_projected', true);
+  const skipNextWindow = calculateNextWindow(anchor, skipTask);
+  await db().from('instances').insert({
+    task_id:              skipTask.id,
+    user_id:              conflict.user_id,
+    due_date_start:       skipNextWindow.due_date_start,
+    due_date_end:         skipNextWindow.due_date_end,
     interval_anchor_date: toISODate(anchor),
-  }).eq('id', loserInstanceId);
+    status:               'upcoming',
+    is_projected:         false,
+  });
+  await generateProjectedInstances(skipTask, parseISO(skipNextWindow.due_date_end));
 
-  await markResolved(conflict.id, 'reset', {});
+  // 3. For kept task: update anchor, regenerate projections from its due window end
+  await db().from('instances').update({ interval_anchor_date: toISODate(anchor) }).eq('id', keepInstanceId);
+  await generateProjectedInstances(keepTask, parseISO(keepInst.due_date_end));
 
-  // Re-detect conflicts for this pair after the change
+  await markResolved(conflict.id, 'skip_one', { skip_target: skipTarget });
   await redetectAfterResolution(conflict);
 }
 
 /**
- * Delay — push one instance by a given number of days. The delayed task's
- * projections are recalculated from the new date.
+ * Auto-Adjust — shift one task's instance forward or back by N days.
  *
- * @param delayTarget - 'a' to push instance_a, 'b' to push instance_b
- * @param days        - how many days to push
+ * snapBack = false (default): the moved date becomes the new anchor; cadence
+ *   continues forward from there (projections regenerate from adjusted date).
+ *
+ * snapBack = true: one-time nudge. Projections continue from the original
+ *   schedule by setting override_next_date to the original start, which
+ *   completeInstance() uses as the anchor when regenerating projections.
  */
-export async function resolveWithDelay(
+export async function resolveAutoAdjust(
   conflict: RoutineConflict,
-  delayTarget: DelayTarget,
-  days: number
+  adjustTarget: DelayTarget,
+  days: number,
+  direction: AdjustDirection,
+  snapBack: boolean
 ): Promise<void> {
-  const targetInstanceId =
-    delayTarget === 'a' ? conflict.instance_a_id : conflict.instance_b_id;
+  const targetInstanceId = adjustTarget === 'a' ? conflict.instance_a_id : conflict.instance_b_id;
 
   const { data: inst } = await db()
     .from('instances')
-    .select('due_date_start, due_date_end')
+    .select('task_id, due_date_start, due_date_end')
     .eq('id', targetInstanceId)
     .single();
-
   if (!inst) return;
 
-  const newStart = toISODate(addDays(parseISO(inst.due_date_start), days));
-  const newEnd   = toISODate(addDays(parseISO(inst.due_date_end),   days));
+  const { data: task } = await db().from('tasks').select('*').eq('id', inst.task_id).single();
+  if (!task) return;
 
-  await db()
-    .from('instances')
-    .update({ due_date_start: newStart, due_date_end: newEnd })
-    .eq('id', targetInstanceId);
+  const originalStart = inst.due_date_start;
+  const multiplier    = direction === 'forward' ? 1 : -1;
+  const newStart = toISODate(addDays(parseISO(inst.due_date_start), days * multiplier));
+  const newEnd   = toISODate(addDays(parseISO(inst.due_date_end),   days * multiplier));
 
-  await markResolved(conflict.id, 'delay', {
+  const updatePayload: Record<string, unknown> = { due_date_start: newStart, due_date_end: newEnd };
+  if (snapBack) {
+    // Store original start so it can be inspected later; set override_next_date so
+    // completeInstance() anchors the next projections from the original schedule.
+    updatePayload.original_scheduled_date = originalStart;
+    updatePayload.override_next_date      = originalStart;
+  }
+  await db().from('instances').update(updatePayload).eq('id', targetInstanceId);
+
+  if (!snapBack) {
+    // Continue cadence from the adjusted date
+    await generateProjectedInstances(task as Task, parseISO(newStart));
+  }
+  // snapBack=true: existing projections already reflect the original rhythm; no change needed.
+
+  await markResolved(conflict.id, 'auto_adjust', {
     resolved_by_delay_days: days,
-    resolved_delay_target:  delayTarget,
+    resolved_delay_target:  adjustTarget,
+    adjust_direction:       direction,
+    adjust_snap_back:       snapBack,
   });
 
   await redetectAfterResolution(conflict);
@@ -144,15 +162,29 @@ export async function resolveWithDelay(
 export async function savePairDefault(
   pairId: string,
   resolution: ConflictResolution,
-  delayDays?: number,
-  delayTarget?: DelayTarget
+  opts?: {
+    adjustDays?:        number;
+    adjustTarget?:      DelayTarget;
+    adjustDirection?:   AdjustDirection;
+    adjustSnapBack?:    boolean;
+    skipTarget?:        SkipTarget;
+    noConflictOrder?:   NoConflictOrder;
+    noConflictTimeA?:   string;
+    noConflictTimeB?:   string;
+  }
 ): Promise<void> {
   await db()
     .from('routine_task_pairs')
     .update({
-      default_resolution: resolution,
-      default_delay_days: delayDays ?? null,
-      delay_target:       delayTarget ?? null,
+      default_resolution:  resolution,
+      default_delay_days:  resolution === 'auto_adjust' ? (opts?.adjustDays      ?? null) : null,
+      delay_target:        resolution === 'auto_adjust' ? (opts?.adjustTarget    ?? null) : null,
+      adjust_direction:    resolution === 'auto_adjust' ? (opts?.adjustDirection ?? null) : null,
+      adjust_snap_back:    resolution === 'auto_adjust' ? (opts?.adjustSnapBack  ?? null) : null,
+      skip_target:         resolution === 'skip_one'    ? (opts?.skipTarget      ?? null) : null,
+      no_conflict_order:   resolution === 'no_conflict' ? (opts?.noConflictOrder ?? null) : null,
+      no_conflict_time_a:  resolution === 'no_conflict' ? (opts?.noConflictTimeA ?? null) : null,
+      no_conflict_time_b:  resolution === 'no_conflict' ? (opts?.noConflictTimeB ?? null) : null,
     })
     .eq('id', pairId);
 }

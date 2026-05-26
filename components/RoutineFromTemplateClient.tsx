@@ -38,32 +38,30 @@ export default function RoutineFromTemplateClient({ template }: Props) {
       .select('id')
       .single();
 
-    if (err) {
-      setError(err.message);
-      setCreating(false);
-      return;
-    }
+    if (err) { setError(err.message); setCreating(false); return; }
 
     router.push(`/routines/${newRoutine.id}`);
   }
 
   return (
-    <div className="space-y-4 pt-2 border-t border-gray-100">
-      <h2 className="text-sm font-semibold text-gray-700">Use this template</h2>
+    <div className="space-y-4 pt-4 border-t border-glow-border">
+      <p className="label-overline">Use this template</p>
       <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">Routine name</label>
+        <label className="block text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide">Routine name</label>
         <input
           type="text"
           value={name}
           onChange={e => setName(e.target.value)}
-          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300"
+          className="w-full"
         />
       </div>
-      {error && <p className="text-red-500 text-xs">{error}</p>}
+      {error && (
+        <p className="text-charcoal bg-dust-lt border border-dust rounded-md px-3 py-2 text-xs">{error}</p>
+      )}
       <button
         onClick={handleCreate}
         disabled={creating}
-        className="w-full bg-pink-500 text-white text-sm font-medium rounded-xl py-2.5 disabled:opacity-50"
+        className="w-full bg-charcoal hover:bg-charcoal/90 text-cream text-sm font-medium rounded-pill py-2.5 disabled:opacity-50"
       >
         {creating ? 'Creating…' : 'Create from Template'}
       </button>

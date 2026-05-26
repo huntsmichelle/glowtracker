@@ -13,7 +13,8 @@
       "Bash(git add *)",
       "Bash(git commit *)",
       "Bash(git push *)",
-      "Bash(git *)"
+      "Bash(git *)",
+      "Bash(Get-ChildItem \"C:\\\\GlowLoop\\\\supabase\\\\migrations\\\\\" | Sort-Object Name *)"
     ]
   }
 }

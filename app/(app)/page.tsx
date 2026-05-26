@@ -52,6 +52,7 @@ export default async function DashboardPage() {
     <DashboardClient
       instances={(instances as InstanceWithTask[]) ?? []}
       conflictCounts={conflictCounts}
+      userId={user.id}
     />
   );
 }
