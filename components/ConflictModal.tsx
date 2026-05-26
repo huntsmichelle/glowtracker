@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, addDays } from 'date-fns';
+import { createClient } from '@/lib/supabase/client';
 import {
   resolveNoConflict,
   resolveAsAsked,
@@ -20,6 +21,7 @@ type ConflictInstance = {
 type ConflictPair = {
   id: string;
   default_resolution: ConflictResolution;
+  proximity_days?: number | null;
   task_a: { id: string; name: string };
   task_b: { id: string; name: string };
 };
@@ -32,6 +34,8 @@ export type ConflictWithJoins = {
   instance_a_id: string;
   instance_b_id: string;
   conflict_date: string;
+  conflict_type?: 'same_day' | 'proximity';
+  days_apart?: number | null;
   status: string;
   pair: ConflictPair;
   instance_a: ConflictInstance;
@@ -44,6 +48,8 @@ interface Props {
   onClose: () => void;
 }
 
+// ─── Same-day conflict ────────────────────────────────────────────────────────
+
 const TOOLTIPS: Record<ConflictResolution, string> = {
   no_conflict:  'Both rituals stay on this date. Each series continues on its own schedule as normal.',
   ask:          "You'll be prompted to choose what to do each time these two rituals land on the same date.",
@@ -51,7 +57,7 @@ const TOOLTIPS: Record<ConflictResolution, string> = {
   skip_one:     'One ritual skips this occurrence. Both series then use this date as their new starting point for future scheduling.',
 };
 
-export default function ConflictModal({ conflict, onResolved, onClose }: Props) {
+function SameDayModal({ conflict, onResolved, onClose }: Props) {
   const [mode, setMode]                     = useState<ConflictResolution>('no_conflict');
   const [skipTarget, setSkipTarget]         = useState<SkipTarget>('b');
   const [adjustTarget, setAdjustTarget]     = useState<DelayTarget>('b');
@@ -114,172 +120,320 @@ export default function ConflictModal({ conflict, onResolved, onClose }: Props) 
   }
 
   return (
+    <div className="space-y-4">
+      <div>
+        <p className="label-overline mb-0.5">Overlap Detected</p>
+        <p className="text-xs text-warm-mid">
+          {taskA.name} and {taskB.name} overlap on {fmt(conflict.conflict_date)}
+        </p>
+      </div>
+
+      <div className="bg-taupe rounded-md p-3 space-y-1.5 text-xs">
+        <div className="flex justify-between">
+          <span className="font-medium text-charcoal">{taskA.name}</span>
+          <span className="text-warm-light">{fmt(instance_a.due_date_start)} – {fmt(instance_a.due_date_end)}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="font-medium text-charcoal">{taskB.name}</span>
+          <span className="text-warm-light">{fmt(instance_b.due_date_start)} – {fmt(instance_b.due_date_end)}</span>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <label className={optionClass(mode === 'no_conflict')} title={TOOLTIPS.no_conflict}>
+          <input type="radio" name="mode" value="no_conflict" checked={mode === 'no_conflict'} onChange={() => setMode('no_conflict')} className="mt-0.5 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-charcoal">No Overlap</p>
+            <p className="text-xs text-warm-light mb-2">Both rituals stay on this date — no dates change.</p>
+            {mode === 'no_conflict' && (
+              <div className="space-y-2" onClick={e => e.preventDefault()}>
+                <p className="text-xs text-warm-mid">Optional: set order and times for this date.</p>
+                <div>
+                  <p className="text-xs text-warm-mid mb-1">Which happens first?</p>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setNoConflictOrder('a_first')} className={chipClass(noConflictOrder === 'a_first')}>▲ {taskA.name}</button>
+                    <button type="button" onClick={() => setNoConflictOrder('b_first')} className={chipClass(noConflictOrder === 'b_first')}>▲ {taskB.name}</button>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <p className="text-xs text-warm-mid mb-1">{taskA.name} at</p>
+                    <input type="time" value={noConflictTimeA} onChange={e => setNoConflictTimeA(e.target.value)} className="w-full" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-xs text-warm-mid mb-1">{taskB.name} at</p>
+                    <input type="time" value={noConflictTimeB} onChange={e => setNoConflictTimeB(e.target.value)} className="w-full" />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </label>
+
+        <label className={optionClass(mode === 'ask')} title={TOOLTIPS.ask}>
+          <input type="radio" name="mode" value="ask" checked={mode === 'ask'} onChange={() => setMode('ask')} className="mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-charcoal">Ask Me Each Time</p>
+            <p className="text-xs text-warm-light">Dismiss this one; prompt me again next time.</p>
+          </div>
+        </label>
+
+        <label className={optionClass(mode === 'auto_adjust')} title={TOOLTIPS.auto_adjust}>
+          <input type="radio" name="mode" value="auto_adjust" checked={mode === 'auto_adjust'} onChange={() => setMode('auto_adjust')} className="mt-0.5 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-charcoal">Auto-Adjust</p>
+            <p className="text-xs text-warm-light mb-2">Shift one ritual forward or back by a set number of days.</p>
+            {mode === 'auto_adjust' && (
+              <div className="space-y-2.5 mt-1" onClick={e => e.preventDefault()}>
+                <div>
+                  <p className="text-xs text-warm-mid mb-1">Which ritual moves?</p>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setAdjustTarget('a')} className={chipClass(adjustTarget === 'a')}>{taskA.name}</button>
+                    <button type="button" onClick={() => setAdjustTarget('b')} className={chipClass(adjustTarget === 'b')}>{taskB.name}</button>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs text-warm-mid mb-1">Direction</p>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setAdjustDir('forward')} className={chipClass(adjustDirection === 'forward')}>Delay (later)</button>
+                    <button type="button" onClick={() => setAdjustDir('back')} className={chipClass(adjustDirection === 'back')}>Advance (earlier)</button>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-warm-mid">By</span>
+                  <input type="number" min={1} max={90} value={adjustDays} onChange={e => setAdjustDays(Number(e.target.value))} className="w-16 text-center" />
+                  <span className="text-xs text-warm-mid">days</span>
+                </div>
+                <div>
+                  <p className="text-xs text-warm-mid mb-1">After adjustment</p>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setSnapBack(false)} className={chipClass(!snapBack)}>Continue from new date</button>
+                    <button type="button" onClick={() => setSnapBack(true)} className={chipClass(snapBack)}>Snap back to original rhythm</button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </label>
+
+        <label className={optionClass(mode === 'skip_one')} title={TOOLTIPS.skip_one}>
+          <input type="radio" name="mode" value="skip_one" checked={mode === 'skip_one'} onChange={() => setMode('skip_one')} className="mt-0.5 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-charcoal">Skip One</p>
+            <p className="text-xs text-warm-light mb-2">One ritual skips this occurrence; both reanchor from this date.</p>
+            {mode === 'skip_one' && (
+              <div onClick={e => e.preventDefault()}>
+                <p className="text-xs text-warm-mid mb-1">Which ritual skips?</p>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setSkipTarget('a')} className={chipClass(skipTarget === 'a')}>{taskA.name}</button>
+                  <button type="button" onClick={() => setSkipTarget('b')} className={chipClass(skipTarget === 'b')}>{taskB.name}</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </label>
+      </div>
+
+      <details className="text-xs border border-glow-border rounded-lg overflow-hidden">
+        <summary className="px-3 py-2 cursor-pointer text-warm-mid hover:bg-taupe font-medium">Resolution Guide</summary>
+        <div className="px-3 pb-3 pt-1 space-y-2 border-t border-glow-border">
+          {(Object.entries(TOOLTIPS) as [ConflictResolution, string][]).map(([key, desc]) => (
+            <div key={key}>
+              <p className="font-medium text-charcoal">
+                {key === 'no_conflict' ? 'No Overlap' : key === 'ask' ? 'Ask Me Each Time' : key === 'auto_adjust' ? 'Auto-Adjust' : 'Skip One'}
+              </p>
+              <p className="text-warm-light">{desc}</p>
+            </div>
+          ))}
+        </div>
+      </details>
+
+      <label className="flex items-center gap-2 text-xs text-warm-mid cursor-pointer">
+        <input type="checkbox" checked={saveDefault} onChange={e => setSaveDefault(e.target.checked)} />
+        Save as default for this pair
+      </label>
+
+      <div className="flex gap-3 pt-1">
+        <button onClick={handleResolve} disabled={saving} className="flex-1 bg-charcoal text-cream text-sm font-medium rounded-pill py-2.5 disabled:opacity-50 hover:bg-charcoal/90">
+          {saving ? 'Resolving…' : 'Resolve'}
+        </button>
+        <button onClick={onClose} className="flex-1 text-sm text-warm-mid border border-glow-border rounded-pill py-2.5 hover:bg-taupe transition-colors">
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Proximity conflict ───────────────────────────────────────────────────────
+
+type ProximityMode = 'looks_good' | 'auto_adjust' | 'remind_closer';
+
+function ProximityModal({ conflict, onResolved, onClose }: Props) {
+  const [mode, setMode]               = useState<ProximityMode>('looks_good');
+  const [adjustTarget, setAdjustTarget] = useState<DelayTarget>('b');
+  const [adjustDirection, setAdjustDir] = useState<AdjustDirection>('forward');
+  const [adjustDays, setAdjustDays]   = useState(conflict.pair.proximity_days ?? 7);
+  const [snapBack, setSnapBack]       = useState(false);
+  const [reminderDays, setReminderDays] = useState(7);
+  const [saving, setSaving]           = useState(false);
+
+  const { pair, instance_a, instance_b } = conflict;
+  const taskA = pair.task_a;
+  const taskB = pair.task_b;
+  const daysApart = conflict.days_apart ?? 0;
+
+  function fmt(d: string) { return format(parseISO(d), 'MMM d'); }
+
+  const optionClass = (active: boolean) =>
+    `flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+      active ? 'border-charcoal bg-taupe' : 'border-glow-border hover:border-warm-light'
+    }`;
+
+  const chipClass = (active: boolean) =>
+    `flex-1 text-xs py-1.5 px-2 rounded-pill border transition-colors text-center ${
+      active ? 'border-charcoal bg-charcoal text-cream font-medium' : 'border-glow-border text-warm-mid hover:border-warm-light'
+    }`;
+
+  async function handleResolve() {
+    setSaving(true);
+    const supabase = createClient();
+    try {
+      if (mode === 'looks_good') {
+        await supabase.from('routine_conflicts').update({
+          status: 'resolved', resolution: 'looks_good', resolved_at: new Date().toISOString(),
+        }).eq('id', conflict.id);
+      } else if (mode === 'auto_adjust') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await resolveAutoAdjust(conflict as any, adjustTarget, adjustDays, adjustDirection, snapBack);
+      } else if (mode === 'remind_closer') {
+        const earlierDate = instance_a.due_date_start < instance_b.due_date_start
+          ? instance_a.due_date_start
+          : instance_b.due_date_start;
+        const remindAt = format(addDays(parseISO(earlierDate), -reminderDays), 'yyyy-MM-dd');
+        await supabase.from('routine_conflicts').update({
+          status: 'resolved', resolution: 'remind_closer',
+          resolved_at: new Date().toISOString(), remind_at: remindAt,
+        }).eq('id', conflict.id);
+      }
+      onResolved();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // Earlier task name for "Remind me X days before [earlier task]"
+  const earlierTaskName = instance_a.due_date_start <= instance_b.due_date_start ? taskA.name : taskB.name;
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <p className="label-overline mb-0.5">Timing Note</p>
+        <p className="text-xs text-warm-mid">
+          {taskA.name} and {taskB.name} are only {daysApart} day{daysApart !== 1 ? 's' : ''} apart
+          {pair.proximity_days ? ` — less than the recommended ${pair.proximity_days}` : ''}.
+        </p>
+      </div>
+
+      <div className="bg-taupe rounded-md p-3 space-y-1.5 text-xs">
+        <div className="flex justify-between">
+          <span className="font-medium text-charcoal">{taskA.name}</span>
+          <span className="text-warm-light">{fmt(instance_a.due_date_start)}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="font-medium text-charcoal">{taskB.name}</span>
+          <span className="text-warm-light">{fmt(instance_b.due_date_start)}</span>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <label className={optionClass(mode === 'looks_good')}>
+          <input type="radio" name="prox_mode" value="looks_good" checked={mode === 'looks_good'} onChange={() => setMode('looks_good')} className="mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-charcoal">Looks Good</p>
+            <p className="text-xs text-warm-light">The spacing works for my schedule. Keep both dates as planned.</p>
+          </div>
+        </label>
+
+        <label className={optionClass(mode === 'auto_adjust')}>
+          <input type="radio" name="prox_mode" value="auto_adjust" checked={mode === 'auto_adjust'} onChange={() => setMode('auto_adjust')} className="mt-0.5 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-charcoal">Auto-Adjust</p>
+            <p className="text-xs text-warm-light mb-2">Shift one ritual to create the recommended spacing.</p>
+            {mode === 'auto_adjust' && (
+              <div className="space-y-2.5 mt-1" onClick={e => e.preventDefault()}>
+                <div>
+                  <p className="text-xs text-warm-mid mb-1">Which ritual moves?</p>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setAdjustTarget('a')} className={chipClass(adjustTarget === 'a')}>{taskA.name}</button>
+                    <button type="button" onClick={() => setAdjustTarget('b')} className={chipClass(adjustTarget === 'b')}>{taskB.name}</button>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs text-warm-mid mb-1">Direction</p>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setAdjustDir('forward')} className={chipClass(adjustDirection === 'forward')}>Delay (later)</button>
+                    <button type="button" onClick={() => setAdjustDir('back')} className={chipClass(adjustDirection === 'back')}>Advance (earlier)</button>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-warm-mid">By</span>
+                  <input type="number" min={1} max={365} value={adjustDays} onChange={e => setAdjustDays(Number(e.target.value))} className="w-16 text-center" />
+                  <span className="text-xs text-warm-mid">days</span>
+                </div>
+                <div>
+                  <p className="text-xs text-warm-mid mb-1">After adjustment</p>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setSnapBack(false)} className={chipClass(!snapBack)}>Continue from new date</button>
+                    <button type="button" onClick={() => setSnapBack(true)} className={chipClass(snapBack)}>Snap back to original rhythm</button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </label>
+
+        <label className={optionClass(mode === 'remind_closer')}>
+          <input type="radio" name="prox_mode" value="remind_closer" checked={mode === 'remind_closer'} onChange={() => setMode('remind_closer')} className="mt-0.5 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-charcoal">Remind Me Closer</p>
+            <p className="text-xs text-warm-light mb-2">Flag this again when {earlierTaskName} is approaching.</p>
+            {mode === 'remind_closer' && (
+              <div className="flex items-center gap-2 mt-1" onClick={e => e.preventDefault()}>
+                <span className="text-xs text-warm-mid">Remind me</span>
+                <input type="number" min={1} max={90} value={reminderDays} onChange={e => setReminderDays(Number(e.target.value))} className="w-16 text-center" />
+                <span className="text-xs text-warm-mid">days before</span>
+              </div>
+            )}
+          </div>
+        </label>
+      </div>
+
+      <div className="flex gap-3 pt-1">
+        <button onClick={handleResolve} disabled={saving} className="flex-1 bg-charcoal text-cream text-sm font-medium rounded-pill py-2.5 disabled:opacity-50 hover:bg-charcoal/90">
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+        <button onClick={onClose} className="flex-1 text-sm text-warm-mid border border-glow-border rounded-pill py-2.5 hover:bg-taupe transition-colors">
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Outer shell ──────────────────────────────────────────────────────────────
+
+export default function ConflictModal({ conflict, onResolved, onClose }: Props) {
+  const isProximity = conflict.conflict_type === 'proximity';
+
+  return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-charcoal/30 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-stone border border-glow-border rounded-lg shadow-modal w-full max-w-sm mx-4 p-5 space-y-4 max-h-[90vh] overflow-y-auto">
-
-        {/* Header */}
-        <div>
-          <p className="label-overline mb-0.5">Overlap Detected</p>
-          <p className="text-xs text-warm-mid">
-            {taskA.name} and {taskB.name} overlap on {fmt(conflict.conflict_date)}
-          </p>
-        </div>
-
-        {/* Date summary */}
-        <div className="bg-taupe rounded-md p-3 space-y-1.5 text-xs">
-          <div className="flex justify-between">
-            <span className="font-medium text-charcoal">{taskA.name}</span>
-            <span className="text-warm-light">{fmt(instance_a.due_date_start)} – {fmt(instance_a.due_date_end)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="font-medium text-charcoal">{taskB.name}</span>
-            <span className="text-warm-light">{fmt(instance_b.due_date_start)} – {fmt(instance_b.due_date_end)}</span>
-          </div>
-        </div>
-
-        {/* Options */}
-        <div className="space-y-2">
-
-          {/* No Conflict */}
-          <label className={optionClass(mode === 'no_conflict')} title={TOOLTIPS.no_conflict}>
-            <input type="radio" name="mode" value="no_conflict" checked={mode === 'no_conflict'} onChange={() => setMode('no_conflict')} className="mt-0.5 flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-charcoal">No Overlap</p>
-              <p className="text-xs text-warm-light mb-2">Both rituals stay on this date — no dates change.</p>
-              {mode === 'no_conflict' && (
-                <div className="space-y-2" onClick={e => e.preventDefault()}>
-                  <p className="text-xs text-warm-mid">Optional: set order and times for this date.</p>
-                  <div>
-                    <p className="text-xs text-warm-mid mb-1">Which happens first?</p>
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => setNoConflictOrder('a_first')} className={chipClass(noConflictOrder === 'a_first')}>▲ {taskA.name}</button>
-                      <button type="button" onClick={() => setNoConflictOrder('b_first')} className={chipClass(noConflictOrder === 'b_first')}>▲ {taskB.name}</button>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <div className="flex-1">
-                      <p className="text-xs text-warm-mid mb-1">{taskA.name} at</p>
-                      <input type="time" value={noConflictTimeA} onChange={e => setNoConflictTimeA(e.target.value)} className="w-full" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-xs text-warm-mid mb-1">{taskB.name} at</p>
-                      <input type="time" value={noConflictTimeB} onChange={e => setNoConflictTimeB(e.target.value)} className="w-full" />
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </label>
-
-          {/* Ask Me Each Time */}
-          <label className={optionClass(mode === 'ask')} title={TOOLTIPS.ask}>
-            <input type="radio" name="mode" value="ask" checked={mode === 'ask'} onChange={() => setMode('ask')} className="mt-0.5 flex-shrink-0" />
-            <div>
-              <p className="text-sm font-medium text-charcoal">Ask Me Each Time</p>
-              <p className="text-xs text-warm-light">Dismiss this one; prompt me again next time.</p>
-            </div>
-          </label>
-
-          {/* Auto-Adjust */}
-          <label className={optionClass(mode === 'auto_adjust')} title={TOOLTIPS.auto_adjust}>
-            <input type="radio" name="mode" value="auto_adjust" checked={mode === 'auto_adjust'} onChange={() => setMode('auto_adjust')} className="mt-0.5 flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-charcoal">Auto-Adjust</p>
-              <p className="text-xs text-warm-light mb-2">Shift one ritual forward or back by a set number of days.</p>
-              {mode === 'auto_adjust' && (
-                <div className="space-y-2.5 mt-1" onClick={e => e.preventDefault()}>
-                  <div>
-                    <p className="text-xs text-warm-mid mb-1">Which ritual moves?</p>
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => setAdjustTarget('a')} className={chipClass(adjustTarget === 'a')}>{taskA.name}</button>
-                      <button type="button" onClick={() => setAdjustTarget('b')} className={chipClass(adjustTarget === 'b')}>{taskB.name}</button>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-xs text-warm-mid mb-1">Direction</p>
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => setAdjustDir('forward')} className={chipClass(adjustDirection === 'forward')}>Delay (later)</button>
-                      <button type="button" onClick={() => setAdjustDir('back')} className={chipClass(adjustDirection === 'back')}>Advance (earlier)</button>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-warm-mid">By</span>
-                    <input
-                      type="number" min={1} max={90} value={adjustDays}
-                      onChange={e => setAdjustDays(Number(e.target.value))}
-                      className="w-16 text-center"
-                    />
-                    <span className="text-xs text-warm-mid">days</span>
-                  </div>
-                  <div>
-                    <p className="text-xs text-warm-mid mb-1">After adjustment</p>
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => setSnapBack(false)} className={chipClass(!snapBack)}>Continue from new date</button>
-                      <button type="button" onClick={() => setSnapBack(true)} className={chipClass(snapBack)}>Snap back to original rhythm</button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </label>
-
-          {/* Skip One */}
-          <label className={optionClass(mode === 'skip_one')} title={TOOLTIPS.skip_one}>
-            <input type="radio" name="mode" value="skip_one" checked={mode === 'skip_one'} onChange={() => setMode('skip_one')} className="mt-0.5 flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-charcoal">Skip One</p>
-              <p className="text-xs text-warm-light mb-2">One ritual skips this occurrence; both reanchor from this date.</p>
-              {mode === 'skip_one' && (
-                <div onClick={e => e.preventDefault()}>
-                  <p className="text-xs text-warm-mid mb-1">Which ritual skips?</p>
-                  <div className="flex gap-2">
-                    <button type="button" onClick={() => setSkipTarget('a')} className={chipClass(skipTarget === 'a')}>{taskA.name}</button>
-                    <button type="button" onClick={() => setSkipTarget('b')} className={chipClass(skipTarget === 'b')}>{taskB.name}</button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </label>
-        </div>
-
-        {/* Resolution Guide */}
-        <details className="text-xs border border-glow-border rounded-lg overflow-hidden">
-          <summary className="px-3 py-2 cursor-pointer text-warm-mid hover:bg-taupe font-medium">Resolution Guide</summary>
-          <div className="px-3 pb-3 pt-1 space-y-2 border-t border-glow-border">
-            {(Object.entries(TOOLTIPS) as [ConflictResolution, string][]).map(([key, desc]) => (
-              <div key={key}>
-                <p className="font-medium text-charcoal">
-                  {key === 'no_conflict' ? 'No Overlap' : key === 'ask' ? 'Ask Me Each Time' : key === 'auto_adjust' ? 'Auto-Adjust' : 'Skip One'}
-                </p>
-                <p className="text-warm-light">{desc}</p>
-              </div>
-            ))}
-          </div>
-        </details>
-
-        {/* Save as default */}
-        <label className="flex items-center gap-2 text-xs text-warm-mid cursor-pointer">
-          <input type="checkbox" checked={saveDefault} onChange={e => setSaveDefault(e.target.checked)} />
-          Save as default for this pair
-        </label>
-
-        {/* Actions */}
-        <div className="flex gap-3 pt-1">
-          <button
-            onClick={handleResolve}
-            disabled={saving}
-            className="flex-1 bg-charcoal text-cream text-sm font-medium rounded-pill py-2.5 disabled:opacity-50 hover:bg-charcoal/90"
-          >
-            {saving ? 'Resolving…' : 'Resolve'}
-          </button>
-          <button
-            onClick={onClose}
-            className="flex-1 text-sm text-warm-mid border border-glow-border rounded-pill py-2.5 hover:bg-taupe transition-colors"
-          >
-            Cancel
-          </button>
-        </div>
+        {isProximity
+          ? <ProximityModal conflict={conflict} onResolved={onResolved} onClose={onClose} />
+          : <SameDayModal   conflict={conflict} onResolved={onResolved} onClose={onClose} />
+        }
       </div>
     </div>
   );

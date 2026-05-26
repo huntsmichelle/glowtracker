@@ -10,6 +10,7 @@ import LinkRulesPanel from '@/components/LinkRulesPanel';
 import RoutineTimeline from '@/components/RoutineTimeline';
 import InlineTaskForm from '@/components/InlineTaskForm';
 import type { Routine, Task, Category, ConflictIntent, ConflictResolution, DelayTarget, AdjustDirection, SkipTarget, NoConflictOrder } from '@/types';
+import { getCategoryColor } from '@/lib/categoryColors';
 
 type PairWithTasks = {
   id: string;
@@ -470,7 +471,7 @@ export default function RoutineDetailClient({
                 <Link href={`/tasks/${t.id}`} className="flex items-center gap-2 min-w-0 flex-1">
                   <span
                     className="w-2 h-2 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: (t as Task & { category?: { color: string } }).category?.color ?? '#9E9890' }}
+                    style={{ backgroundColor: getCategoryColor((t as Task & { category?: { name: string } }).category?.name ?? '').dot }}
                   />
                   <span className="text-sm font-medium text-charcoal truncate">{t.name}</span>
                 </Link>

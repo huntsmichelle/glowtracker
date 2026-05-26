@@ -16,5 +16,9 @@ export default async function NewRoutinePage() {
     .or(`user_id.eq.${user.id},user_id.is.null`)
     .order('name');
 
-  return <NewRoutineClient categories={categories ?? []} userId={user.id} />;
+  return (
+    <div className="max-w-2xl mx-auto px-5 py-8">
+      <NewRoutineClient categories={categories ?? []} userId={user.id} />
+    </div>
+  );
 }

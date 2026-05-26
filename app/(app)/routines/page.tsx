@@ -51,7 +51,7 @@ export default async function RoutinesListPage() {
   }));
 
   return (
-    <div className="space-y-8">
+    <div className="max-w-2xl mx-auto px-5 py-8 space-y-8">
       {/* Header */}
       <div className="flex items-end justify-between">
         <div>
@@ -110,7 +110,14 @@ export default async function RoutinesListPage() {
               </div>
               <div className="flex items-center gap-2 flex-shrink-0 ml-3">
                 {r.pending_conflicts > 0 && r.conflict_intent !== 'independent' && (
-                  <span className="text-xs font-medium bg-dust-lt text-charcoal rounded-pill px-2.5 py-1">
+                  <span
+                    className="text-[11px] font-medium rounded-pill px-2 py-0.5"
+                    style={{
+                      backgroundColor: 'rgba(192,138,110,0.12)',
+                      border: '1px solid #c08a6e',
+                      color: '#2b2823',
+                    }}
+                  >
                     {r.pending_conflicts} overlap{r.pending_conflicts !== 1 ? 's' : ''}
                   </span>
                 )}

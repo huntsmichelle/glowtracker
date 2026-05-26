@@ -17,7 +17,7 @@ export default async function NewTaskPage() {
     .order('name');
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-2xl mx-auto px-5 py-8 space-y-6">
       <h1 className="font-display text-3xl text-charcoal">New Ritual</h1>
       <div className="bg-stone border border-glow-border rounded-lg shadow-card p-5">
         <TaskForm

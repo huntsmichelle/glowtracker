@@ -36,7 +36,7 @@ export default function LoginPage() {
         {/* Brand */}
         <div className="text-center mb-10">
           <h1 className="font-display text-4xl text-charcoal">GlowLoop</h1>
-          <p className="text-warm-mid text-sm mt-1">Your personal ritual tracker</p>
+          <p className="text-warm-mid text-sm mt-1">Your routine, on your schedule.</p>
         </div>
 
         <form

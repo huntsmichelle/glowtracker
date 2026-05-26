@@ -15,13 +15,26 @@ import {
   deriveStatus,
 } from '@/lib/instanceEngine';
 import type { InstanceWithTask, Task } from '@/types';
+import { getCategoryColor } from '@/lib/categoryColors';
 import { detectRoutineConflicts } from '@/lib/conflictDetection';
 import { getTaskSuggestions, dismissSuggestion, type Suggestion } from '@/lib/suggestions';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface ApproachingItem {
+  due_date_start: string;
+  task: { name: string; category: { name: string } | null } | null;
+}
 
 interface Props {
   instances: InstanceWithTask[];
   conflictCounts?: Record<string, number>;
   userId: string;
+  displayName?: string | null;
+  heatmapDates?: string[];
+  completedCount?: number;
+  skippedCount?: number;
+  approaching?: ApproachingItem[];
 }
 
 type ViewMode = 'list' | 'calendar';
@@ -37,20 +50,28 @@ type PlannedEntry = {
   task: { id: string; name: string; default_cost: number | null; category: { name: string; color: string } | null } | null;
 };
 
-// ─── DashboardClient ──────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function getEditorialGreeting(ritualCount: number, dueCount: number): string {
+const ONES = ['zero','one','two','three','four','five','six','seven','eight','nine'];
+function spellOut(n: number): string {
+  return n >= 0 && n <= 9 ? ONES[n] : String(n);
+}
+
+function getEditorialGreeting(ritualCount: number, dueCount: number, name: string | null | undefined): string {
   const h = new Date().getHours();
+  const firstName = name?.split(' ')[0] ?? null;
+  const nameStr = firstName ? `, ${firstName}` : '';
+
   if (h < 12) {
-    if (ritualCount === 0) return 'A quiet morning.';
-    return `A quiet morning — ${ritualCount} small act${ritualCount !== 1 ? 's' : ''}.`;
+    if (ritualCount === 0) return `Good morning${nameStr}. Nothing urgent today.`;
+    return `Good morning${nameStr}, ${spellOut(ritualCount)} small act${ritualCount !== 1 ? 's' : ''} today.`;
   }
   if (h < 17) {
-    if (dueCount > 0) return `${dueCount} ritual${dueCount !== 1 ? 's' : ''} waiting today.`;
-    return "Good afternoon — you're in rhythm.";
+    if (dueCount > 0) return `${spellOut(dueCount)} ritual${dueCount !== 1 ? 's' : ''} waiting, ${firstName ?? 'you'}.`;
+    return `Good afternoon${nameStr}, you're in rhythm.`;
   }
-  if (ritualCount > 0) return 'An evening to tend to things.';
-  return 'A still evening.';
+  if (ritualCount > 0) return `An evening to tend to things${nameStr}.`;
+  return `A still evening${nameStr}.`;
 }
 
 function getDateOverline(): string {
@@ -60,7 +81,34 @@ function getDateOverline(): string {
   return `${day} · ${date}`;
 }
 
-export default function DashboardClient({ instances: initial, conflictCounts = {}, userId }: Props) {
+function computeStreak(dates: string[]): number {
+  if (!dates.length) return 0;
+  const set = new Set(dates);
+  const todayStr = format(today(), 'yyyy-MM-dd');
+  let streak = 0;
+  let cur = today();
+  while (true) {
+    const s = format(cur, 'yyyy-MM-dd');
+    if (s === todayStr && !set.has(s)) { cur = new Date(cur.getTime() - 86400000); continue; }
+    if (!set.has(s)) break;
+    streak++;
+    cur = new Date(cur.getTime() - 86400000);
+  }
+  return streak;
+}
+
+// ─── DashboardClient ──────────────────────────────────────────────────────────
+
+export default function DashboardClient({
+  instances: initial,
+  conflictCounts = {},
+  userId,
+  displayName,
+  heatmapDates = [],
+  completedCount = 0,
+  skippedCount = 0,
+  approaching = [],
+}: Props) {
   const [instances, setInstances] = useState(initial);
 
   // ── Suggestions ────────────────────────────────────────────────────────────
@@ -86,7 +134,7 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
     }
   }
 
-  // ── View mode (list / calendar) ────────────────────────────────────────────
+  // ── View mode ──────────────────────────────────────────────────────────────
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     if (typeof window !== 'undefined') {
       return (localStorage.getItem('dashboard-view') as ViewMode) ?? 'list';
@@ -102,7 +150,7 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
   // ── Calendar state ─────────────────────────────────────────────────────────
   const now = today();
   const [calYear, setCalYear]   = useState(now.getFullYear());
-  const [calMonth, setCalMonth] = useState(now.getMonth() + 1); // 1-indexed
+  const [calMonth, setCalMonth] = useState(now.getMonth() + 1);
   const [calInstances, setCalInstances] = useState<InstanceWithTask[]>(initial);
   const [calLoading, setCalLoading]     = useState(false);
 
@@ -113,7 +161,6 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
     const daysInMonth = new Date(year, month, 0).getDate();
     const lastDay = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
 
-    // Non-completed: show on their scheduled window start
     const { data: scheduled } = await supabase
       .from('instances')
       .select('*, task:tasks(*, category:categories(*), routine:routines(id, name, color))')
@@ -122,7 +169,6 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
       .not('status', 'in', '(completed,skipped)')
       .order('due_date_start', { ascending: true });
 
-    // Completed: show on their actual completion date (may differ from scheduled window)
     const { data: completed } = await supabase
       .from('instances')
       .select('*, task:tasks(*, category:categories(*), routine:routines(id, name, color))')
@@ -131,7 +177,6 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
       .lte('actual_completion_date', lastDay)
       .order('actual_completion_date', { ascending: true });
 
-    // Merge, deduplicating by id (a completed instance whose due_date_start is also in this month appears once)
     const seen = new Set<string>();
     const merged = [...(scheduled ?? []), ...(completed ?? [])].filter(i => {
       if (seen.has(i.id)) return false;
@@ -144,9 +189,7 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
   }, []);
 
   useEffect(() => {
-    if (viewMode === 'calendar') {
-      fetchCalendar(calYear, calMonth);
-    }
+    if (viewMode === 'calendar') fetchCalendar(calYear, calMonth);
   }, [viewMode, calYear, calMonth, fetchCalendar]);
 
   function changeCalMonth(delta: number) {
@@ -168,7 +211,6 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
     setSpendingLoading(true);
     const supabase = createClient();
 
-    // Spent: completed instances with a logged cost (past 6 months)
     const cutoff = new Date();
     cutoff.setMonth(cutoff.getMonth() - 6);
     const { data: spent } = await supabase
@@ -179,7 +221,6 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
       .gte('actual_completion_date', format(cutoff, 'yyyy-MM-dd'))
       .order('actual_completion_date', { ascending: false });
 
-    // Planned: upcoming + projected instances with a task default_cost (next 6 months)
     const { data: planned } = await supabase
       .from('instances')
       .select('due_date_start, task:tasks(id, name, default_cost, category:categories(name, color))')
@@ -198,16 +239,16 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
     if (spendingOpen && spendingData === null) fetchSpending();
   }, [spendingOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Instance list mutations ────────────────────────────────────────────────
+  // ── Mutations ──────────────────────────────────────────────────────────────
   function removeInstance(id: string) {
     setInstances(prev => prev.filter(i => i.id !== id));
   }
 
   // ── Modals ─────────────────────────────────────────────────────────────────
-  const [completeModal, setCompleteModal]           = useState<{ instance: InstanceWithTask } | null>(null);
-  const [snoozeModal, setSnoozeModal]               = useState<{ instance: InstanceWithTask } | null>(null);
-  const [adjustModal, setAdjustModal]               = useState<{ instance: InstanceWithTask } | null>(null);
-  const [deleteModal, setDeleteModal] = useState<{ instance: InstanceWithTask } | null>(null);
+  const [completeModal, setCompleteModal]   = useState<{ instance: InstanceWithTask } | null>(null);
+  const [snoozeModal, setSnoozeModal]       = useState<{ instance: InstanceWithTask } | null>(null);
+  const [adjustModal, setAdjustModal]       = useState<{ instance: InstanceWithTask } | null>(null);
+  const [deleteModal, setDeleteModal]       = useState<{ instance: InstanceWithTask } | null>(null);
 
   const [completionDateMode, setCompletionDateMode] = useState<'scheduled' | 'custom'>('scheduled');
   const [completionDate, setCompletionDate] = useState(format(today(), 'yyyy-MM-dd'));
@@ -215,11 +256,10 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
   const [snoozeDays, setSnoozeDays]         = useState(3);
   const [loading, setLoading]               = useState<string | null>(null);
 
-  // Event override modal state
-  const [eventName, setEventName]         = useState('');
-  const [eventDate, setEventDate]         = useState('');
-  const [daysBefore, setDaysBefore]       = useState(7);
-  const [resumeNormal, setResumeNormal]   = useState(true);
+  const [eventName, setEventName]           = useState('');
+  const [eventDate, setEventDate]           = useState('');
+  const [daysBefore, setDaysBefore]         = useState(7);
+  const [resumeNormal, setResumeNormal]     = useState(true);
   const [overrideNextDate, setOverrideNextDate] = useState('');
 
   function openCompleteModal(instance: InstanceWithTask) {
@@ -230,15 +270,11 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
   }
 
   function openAdjustModal(instance: InstanceWithTask) {
-    setEventName('');
-    setEventDate('');
-    setDaysBefore(7);
-    setResumeNormal(true);
-    setOverrideNextDate('');
+    setEventName(''); setEventDate(''); setDaysBefore(7); setResumeNormal(true); setOverrideNextDate('');
     setAdjustModal({ instance });
   }
 
-  // ── Action handlers ────────────────────────────────────────────────────────
+  // ── Actions ────────────────────────────────────────────────────────────────
 
   async function handleComplete(instance: InstanceWithTask) {
     setLoading(instance.id);
@@ -362,7 +398,11 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
               {routine.name}
             </Link>
             {conflictCounts[routine.id] > 0 && (
-              <Link href={`/routines/${routine.id}`} className="text-xs font-medium bg-dust-lt text-charcoal rounded-pill px-2 py-0.5">
+              <Link
+                href={`/routines/${routine.id}`}
+                className="text-[11px] font-medium rounded-pill px-2 py-0.5"
+                style={{ backgroundColor: 'rgba(192,138,110,0.12)', border: '1px solid #c08a6e', color: '#2b2823' }}
+              >
                 {conflictCounts[routine.id]} overlap{conflictCounts[routine.id] !== 1 ? 's' : ''}
               </Link>
             )}
@@ -374,7 +414,7 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
           {categories.map(({ key: cKey, category, items: catItems }) => (
             <div key={cKey}>
               <div className="flex items-center gap-1.5 mb-2 pl-3">
-                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: category?.color ?? '#9E9890' }} />
+                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: getCategoryColor(category?.name ?? '').dot }} />
                 <span className="text-xs text-warm-light">{category?.name ?? 'Uncategorized'}</span>
               </div>
               <div className="space-y-3">
@@ -408,7 +448,7 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // SUB-RENDERS (called as functions — avoids React remount on each render)
+  // SUB-COMPONENTS
   // ─────────────────────────────────────────────────────────────────────────
 
   function ViewToggle() {
@@ -433,7 +473,7 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
     const status    = deriveStatus(instance);
     const daysUntil = differenceInDays(parseISO(instance.due_date_start), today());
     const isOverdue = differenceInDays(today(), parseISO(instance.due_date_end)) > 0;
-    const categoryColor = instance.task?.category?.color ?? '#9E9890';
+    const categoryColor = getCategoryColor(instance.task?.category?.name ?? '').dot;
     const isCountdown   = instance.task?.mode === 'countdown';
     const dateLabel = `${format(parseISO(instance.due_date_start), 'MMM d')} – ${format(parseISO(instance.due_date_end), 'MMM d')}`;
 
@@ -518,7 +558,7 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
   }
 
   function TwiceDailyPairCard({ slotA, slotB }: { slotA: InstanceWithTask; slotB: InstanceWithTask }) {
-    const categoryColor = slotA.task?.category?.color ?? '#9E9890';
+    const categoryColor = getCategoryColor(slotA.task?.category?.name ?? '').dot;
     const isLoading = loading === slotA.id || loading === slotB.id;
 
     return (
@@ -555,7 +595,7 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
             </svg>
           </div>
           <h2 className="font-display text-2xl text-charcoal mb-2">All tended to.</h2>
-          <p className="text-warm-mid text-sm mb-8">No rituals on the horizon right now.</p>
+          <p className="text-warm-mid text-sm mb-8">No rituals due today.</p>
           <Link href="/tasks/new" className="inline-block bg-charcoal text-cream text-sm font-medium rounded-pill px-6 py-3 hover:bg-charcoal/90">
             + Add Ritual
           </Link>
@@ -567,18 +607,14 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
       <div className="space-y-8">
         {due.length > 0 && (
           <section>
-            <p className="label-overline mb-4" style={{ color: 'var(--color-accent-dust)' }}>Ready for Refresh</p>
-            <div className="space-y-5">
-              {renderRoutineGroups(due)}
-            </div>
+            <p className="label-overline mb-4" style={{ color: '#c08a6e' }}>Ready for Refresh</p>
+            <div className="space-y-5">{renderRoutineGroups(due)}</div>
           </section>
         )}
         {upcoming.length > 0 && (
           <section>
             <p className="label-overline mb-4">On the Horizon</p>
-            <div className="space-y-5">
-              {renderRoutineGroups(upcoming)}
-            </div>
+            <div className="space-y-5">{renderRoutineGroups(upcoming)}</div>
           </section>
         )}
       </div>
@@ -587,11 +623,10 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
 
   function CalendarView() {
     const daysInMonth   = new Date(calYear, calMonth, 0).getDate();
-    const firstWeekday  = new Date(calYear, calMonth - 1, 1).getDay(); // 0=Sun
+    const firstWeekday  = new Date(calYear, calMonth - 1, 1).getDay();
     const todayStr      = format(today(), 'yyyy-MM-dd');
     const monthLabel    = new Date(calYear, calMonth - 1).toLocaleString('default', { month: 'long', year: 'numeric' });
 
-    // Build map: dateStr → instances (completed → actual_completion_date; others → due_date_start)
     const byDate: Record<string, InstanceWithTask[]> = {};
     for (const inst of calInstances) {
       const d = inst.status === 'completed' && inst.actual_completion_date
@@ -605,32 +640,22 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
       ...Array(firstWeekday).fill(null),
       ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
     ];
-    // Pad to full weeks
     while (cells.length % 7 !== 0) cells.push(null);
 
     return (
       <div className="space-y-3">
-        {/* Month nav */}
         <div className="flex items-center justify-between">
-          <button onClick={() => changeCalMonth(-1)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500">
-            ←
-          </button>
-          <h2 className="text-sm font-semibold text-gray-700">{monthLabel}</h2>
-          <button onClick={() => changeCalMonth(1)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500">
-            →
-          </button>
+          <button onClick={() => changeCalMonth(-1)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-taupe text-warm-mid">←</button>
+          <h2 className="text-sm font-medium text-charcoal">{monthLabel}</h2>
+          <button onClick={() => changeCalMonth(1)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-taupe text-warm-mid">→</button>
         </div>
-
-        {/* Day headers */}
         <div className="grid grid-cols-7 gap-1">
           {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(d => (
-            <div key={d} className="text-center text-xs text-gray-400 py-1">{d}</div>
+            <div key={d} className="text-center text-xs text-warm-light py-1">{d}</div>
           ))}
         </div>
-
-        {/* Day cells */}
         {calLoading ? (
-          <div className="text-center py-8 text-sm text-gray-400">Loading…</div>
+          <div className="text-center py-8 text-sm text-warm-light">Loading…</div>
         ) : (
           <div className="grid grid-cols-7 gap-1">
             {cells.map((day, i) => {
@@ -640,11 +665,8 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
               const isToday  = dateStr === todayStr;
 
               return (
-                <div
-                  key={i}
-                  className={`min-h-[64px] rounded-lg p-1 ${isToday ? 'bg-pink-50 border border-pink-200' : 'border border-gray-100'}`}
-                >
-                  <p className={`text-xs text-center mb-0.5 ${isToday ? 'font-bold text-pink-600' : 'text-gray-400'}`}>{day}</p>
+                <div key={i} className={`min-h-[64px] rounded-lg p-1 ${isToday ? 'bg-sage-lt border border-sage' : 'border border-glow-border'}`}>
+                  <p className={`text-xs text-center mb-0.5 ${isToday ? 'font-bold text-charcoal' : 'text-warm-light'}`}>{day}</p>
                   <div className="space-y-0.5">
                     {dayInsts.slice(0, 3).map(inst => {
                       const isProjected = inst.is_projected;
@@ -652,14 +674,9 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
                       return (
                         <Link key={inst.id} href={`/instances/${inst.id}`} onClick={e => e.stopPropagation()}>
                           <div
-                            className={`text-[10px] leading-tight px-1 py-0.5 rounded truncate text-white ${
-                              isProjected
-                                ? 'opacity-35 border border-dashed border-white/50'
-                                : isCompleted
-                                  ? 'opacity-60'
-                                  : ''
-                            }`}
-                            style={{ backgroundColor: (inst.task as any)?.routine?.color ?? inst.task?.category?.color ?? '#6B7280' }}
+                            className={`text-[10px] leading-tight px-1 py-0.5 rounded truncate text-white ${isProjected ? 'opacity-35 border border-dashed border-white/50' : isCompleted ? 'opacity-60' : ''}`}
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            style={{ backgroundColor: (inst.task as any)?.routine?.color ?? getCategoryColor(inst.task?.category?.name ?? '').dot }}
                           >
                             {isCompleted ? '✓ ' : ''}{inst.task?.name ?? '—'}{inst.time_of_day_label ? ` · ${inst.time_of_day_label}` : ''}
                           </div>
@@ -667,7 +684,7 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
                       );
                     })}
                     {dayInsts.length > 3 && (
-                      <p className="text-[10px] text-gray-400 text-center">+{dayInsts.length - 3}</p>
+                      <p className="text-[10px] text-warm-light text-center">+{dayInsts.length - 3}</p>
                     )}
                   </div>
                 </div>
@@ -684,12 +701,10 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
     const entries      = spendingData ?? [];
     const planned      = plannedData ?? [];
 
-    // ── Spent (completed) ──────────────────────────────────────
     const thisMonthSpent = entries
       .filter(e => e.actual_completion_date.startsWith(thisMonthStr))
       .reduce((s, e) => s + e.cost, 0);
 
-    // ── Planned (upcoming + projected, tasks with a default_cost) ──
     function plannedForMonth(monthStr: string) {
       return planned
         .filter(p => p.due_date_start.startsWith(monthStr) && p.task?.default_cost != null)
@@ -697,61 +712,42 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
     }
     const thisMonthPlanned = plannedForMonth(thisMonthStr);
 
-    // ── 7-month bar chart: 3 past + current + 3 future ────────
     const barMonths: string[] = [];
     for (let i = -3; i <= 3; i++) {
-      const d = new Date();
-      d.setDate(1);
-      d.setMonth(d.getMonth() + i);
+      const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + i);
       barMonths.push(format(d, 'yyyy-MM'));
     }
     const barData = barMonths.map(m => {
       const isPast    = m < thisMonthStr;
       const isCurrent = m === thisMonthStr;
-      const spent     = entries
-        .filter(e => e.actual_completion_date.startsWith(m))
-        .reduce((s, e) => s + e.cost, 0);
+      const spent     = entries.filter(e => e.actual_completion_date.startsWith(m)).reduce((s, e) => s + e.cost, 0);
       const plan      = !isPast ? plannedForMonth(m) : 0;
       const [y, mo]   = m.split('-').map(Number);
-      return {
-        label: new Date(y, mo - 1, 1).toLocaleString('default', { month: 'short' }),
-        spent,
-        planned: plan,
-        isPast,
-        isCurrent,
-        total: spent + plan,
-      };
+      return { label: new Date(y, mo - 1, 1).toLocaleString('default', { month: 'short' }), spent, planned: plan, isPast, isCurrent, total: spent + plan };
     });
     const maxBar = Math.max(...barData.map(m => m.total), 1);
 
-    // ── Monthly avg (spent only, past months with data) ────────
     const pastWithSpend = barData.filter(m => m.isPast && m.spent > 0);
     const monthlyAvg = pastWithSpend.length > 0
-      ? pastWithSpend.reduce((s, m) => s + m.spent, 0) / pastWithSpend.length
-      : 0;
+      ? pastWithSpend.reduce((s, m) => s + m.spent, 0) / pastWithSpend.length : 0;
 
-    // ── By category (this month, spent + planned) ──────────────
     const catMap: Record<string, { name: string; color: string; spent: number; planned: number }> = {};
     for (const e of entries.filter(e => e.actual_completion_date.startsWith(thisMonthStr))) {
-      const name  = e.task?.category?.name  ?? 'Other';
-      const color = e.task?.category?.color ?? '#6B7280';
-      if (!catMap[name]) catMap[name] = { name, color, spent: 0, planned: 0 };
+      const name = e.task?.category?.name ?? 'Other';
+      if (!catMap[name]) catMap[name] = { name, color: getCategoryColor(name).dot, spent: 0, planned: 0 };
       catMap[name].spent += e.cost;
     }
     for (const p of planned.filter(p => p.due_date_start.startsWith(thisMonthStr) && p.task?.default_cost != null)) {
-      const name  = p.task?.category?.name  ?? 'Other';
-      const color = p.task?.category?.color ?? '#6B7280';
-      if (!catMap[name]) catMap[name] = { name, color, spent: 0, planned: 0 };
+      const name = p.task?.category?.name ?? 'Other';
+      if (!catMap[name]) catMap[name] = { name, color: getCategoryColor(name).dot, spent: 0, planned: 0 };
       catMap[name].planned += p.task!.default_cost as number;
     }
     const catList = Object.values(catMap).sort((a, b) => (b.spent + b.planned) - (a.spent + a.planned));
     const maxCat  = Math.max(...catList.map(c => c.spent + c.planned), 1);
 
-    // ── Top 5 tasks by total spend (completed only) ────────────
     const taskMap: Record<string, { name: string; total: number }> = {};
     for (const e of entries) {
-      const id   = e.task?.id ?? 'unknown';
-      const name = e.task?.name ?? 'Unknown';
+      const id = e.task?.id ?? 'unknown'; const name = e.task?.name ?? 'Unknown';
       if (!taskMap[id]) taskMap[id] = { name, total: 0 };
       taskMap[id].total += e.cost;
     }
@@ -779,22 +775,18 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
               </p>
             ) : (
               <>
-                {/* Summary row */}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-taupe rounded-md p-4">
                     <p className="label-overline mb-1">This month</p>
-                    <p className="font-display text-2xl text-charcoal stat-number">${thisMonthSpent.toFixed(2)}</p>
-                    {thisMonthPlanned > 0 && (
-                      <p className="text-xs text-warm-mid mt-0.5">+${thisMonthPlanned.toFixed(2)} planned</p>
-                    )}
+                    <p className="font-display text-2xl text-charcoal">${thisMonthSpent.toFixed(2)}</p>
+                    {thisMonthPlanned > 0 && <p className="text-xs text-warm-mid mt-0.5">+${thisMonthPlanned.toFixed(2)} planned</p>}
                   </div>
                   <div className="bg-taupe rounded-md p-4">
                     <p className="label-overline mb-1">Monthly avg</p>
-                    <p className="font-display text-2xl text-charcoal stat-number">${monthlyAvg.toFixed(2)}</p>
+                    <p className="font-display text-2xl text-charcoal">${monthlyAvg.toFixed(2)}</p>
                   </div>
                 </div>
 
-                {/* By category (this month) */}
                 {catList.length > 0 && (
                   <div>
                     <p className="label-overline mb-3">This month by category</p>
@@ -802,91 +794,49 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
                       {catList.map(cat => (
                         <div key={cat.name} className="flex items-center gap-2">
                           <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />
-                          <span className="text-xs text-gray-600 w-20 truncate">{cat.name}</span>
-                          <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden flex">
-                            {/* Spent portion */}
-                            <div
-                              className="h-full rounded-l-full"
-                              style={{ width: `${(cat.spent / maxCat) * 100}%`, backgroundColor: cat.color }}
-                            />
-                            {/* Planned portion */}
-                            <div
-                              className="h-full rounded-r-full opacity-30"
-                              style={{ width: `${(cat.planned / maxCat) * 100}%`, backgroundColor: cat.color }}
-                            />
+                          <span className="text-xs text-warm-mid w-20 truncate">{cat.name}</span>
+                          <div className="flex-1 h-2 bg-taupe rounded-full overflow-hidden flex">
+                            <div className="h-full rounded-l-full" style={{ width: `${(cat.spent / maxCat) * 100}%`, backgroundColor: cat.color }} />
+                            <div className="h-full rounded-r-full opacity-30" style={{ width: `${(cat.planned / maxCat) * 100}%`, backgroundColor: cat.color }} />
                           </div>
-                          <span className="text-xs text-gray-500 w-14 text-right">
-                            ${cat.spent.toFixed(0)}
-                            {cat.planned > 0 && <span className="text-purple-400">+{cat.planned.toFixed(0)}</span>}
+                          <span className="text-xs text-warm-mid w-14 text-right">
+                            ${cat.spent.toFixed(0)}{cat.planned > 0 && <span className="text-warm-light">+{cat.planned.toFixed(0)}</span>}
                           </span>
                         </div>
                       ))}
                     </div>
-                    <p className="text-[10px] text-gray-400 mt-1.5">Solid = spent · Faded = planned</p>
+                    <p className="text-[10px] text-warm-light mt-1.5">Solid = spent · Faded = planned</p>
                   </div>
                 )}
 
-                {/* 7-month bar chart (3 past + current + 3 future) */}
                 <div>
                   <p className="label-overline mb-3">Spent &amp; planned — 7 months</p>
                   <div className="flex items-end gap-1 h-20">
                     {barData.map(m => (
                       <div key={m.label} className="flex-1 flex flex-col items-center gap-0.5">
-                        <span className="text-[9px] text-gray-400 text-center leading-tight">
-                          {m.total > 0 ? `$${m.total.toFixed(0)}` : ''}
-                        </span>
+                        <span className="text-[9px] text-warm-light text-center leading-tight">{m.total > 0 ? `$${m.total.toFixed(0)}` : ''}</span>
                         <div className="w-full flex flex-col justify-end" style={{ height: '48px' }}>
-                          {/* Planned on top (lighter) */}
-                          {m.planned > 0 && (
-                            <div
-                              className="w-full rounded-t"
-                              style={{
-                                height: `${(m.planned / maxBar) * 48}px`,
-                                minHeight: '3px',
-                                backgroundColor: m.isCurrent ? '#A855F7' : '#EC4899',
-                                opacity: 0.25,
-                              }}
-                            />
-                          )}
-                          {/* Spent (solid) */}
-                          {m.spent > 0 && (
-                            <div
-                              className="w-full"
-                              style={{
-                                height: `${(m.spent / maxBar) * 48}px`,
-                                minHeight: '3px',
-                                backgroundColor: '#EC4899',
-                                opacity: m.isPast ? 0.5 : 1,
-                                borderRadius: m.planned > 0 ? '0' : '2px 2px 0 0',
-                              }}
-                            />
-                          )}
+                          {m.planned > 0 && <div className="w-full rounded-t" style={{ height: `${(m.planned / maxBar) * 48}px`, minHeight: '3px', backgroundColor: '#c08a6e', opacity: 0.25 }} />}
+                          {m.spent > 0 && <div className="w-full" style={{ height: `${(m.spent / maxBar) * 48}px`, minHeight: '3px', backgroundColor: '#8ea394', opacity: m.isPast ? 0.5 : 1, borderRadius: m.planned > 0 ? '0' : '2px 2px 0 0' }} />}
                         </div>
-                        <span className={`text-[9px] ${m.isCurrent ? 'font-bold text-pink-500' : 'text-gray-400'}`}>
-                          {m.label}
-                        </span>
+                        <span className={`text-[9px] ${m.isCurrent ? 'font-bold text-charcoal' : 'text-warm-light'}`}>{m.label}</span>
                       </div>
                     ))}
                   </div>
                   <div className="flex items-center gap-3 mt-1.5">
-                    <span className="flex items-center gap-1 text-[10px] text-gray-400">
-                      <span className="w-2.5 h-2.5 rounded-sm bg-pink-500 inline-block" /> Spent
-                    </span>
-                    <span className="flex items-center gap-1 text-[10px] text-gray-400">
-                      <span className="w-2.5 h-2.5 rounded-sm bg-pink-300 opacity-50 inline-block" /> Planned
-                    </span>
+                    <span className="flex items-center gap-1 text-[10px] text-warm-light"><span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ backgroundColor: '#8ea394' }} /> Spent</span>
+                    <span className="flex items-center gap-1 text-[10px] text-warm-light"><span className="w-2.5 h-2.5 rounded-sm inline-block opacity-40" style={{ backgroundColor: '#c08a6e' }} /> Planned</span>
                   </div>
                 </div>
 
-                {/* Top 5 rituals */}
                 {top5.length > 0 && (
                   <div>
                     <p className="label-overline mb-3">Top rituals by spend</p>
                     <div className="space-y-1.5">
                       {top5.map((t, i) => (
                         <div key={t.name} className="flex items-center justify-between">
-                          <span className="text-xs text-gray-500">{i + 1}. {t.name}</span>
-                          <span className="text-xs font-medium text-gray-700">${t.total.toFixed(2)}</span>
+                          <span className="text-xs text-warm-mid">{i + 1}. {t.name}</span>
+                          <span className="text-xs font-medium text-charcoal">${t.total.toFixed(2)}</span>
                         </div>
                       ))}
                     </div>
@@ -896,6 +846,226 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
             )}
           </div>
         )}
+      </div>
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // RIGHT PANEL — Rhythm + Shelf Restock
+  // ─────────────────────────────────────────────────────────────────────────
+
+  function RhythmCard() {
+    const total  = completedCount + skippedCount;
+    const keptPct = total > 0 ? Math.round((completedCount / total) * 100) : null;
+    const streak  = computeStreak(heatmapDates);
+
+    // 12-week heatmap: 84 cells, oldest at top-left
+    const todayStr = format(today(), 'yyyy-MM-dd');
+    const completedSet = new Set(heatmapDates);
+    const cells: { date: string; has: boolean; isToday: boolean }[] = [];
+    for (let i = 83; i >= 0; i--) {
+      const d = format(new Date(Date.now() - i * 86400000), 'yyyy-MM-dd');
+      cells.push({ date: d, has: completedSet.has(d), isToday: d === todayStr });
+    }
+
+    return (
+      <div className="space-y-5">
+        <p className="label-overline">Rhythm</p>
+
+        {/* Stats row */}
+        <div className="grid grid-cols-3 gap-2">
+          <div className="bg-stone border border-glow-border rounded-lg p-3 text-center">
+            <p className="font-display text-xl text-charcoal">{keptPct != null ? `${keptPct}%` : '—'}</p>
+            <p className="text-[10px] text-warm-light mt-0.5">kept</p>
+          </div>
+          <div className="bg-stone border border-glow-border rounded-lg p-3 text-center">
+            <p className="font-display text-xl text-charcoal">{streak}</p>
+            <p className="text-[10px] text-warm-light mt-0.5">day streak</p>
+          </div>
+          <div className="bg-stone border border-glow-border rounded-lg p-3 text-center">
+            <p className="font-display text-xl text-charcoal">{due.length}</p>
+            <p className="text-[10px] text-warm-light mt-0.5">refresh</p>
+          </div>
+        </div>
+
+        {/* Heatmap: 12 weeks × 7 days */}
+        <div>
+          <div className="grid gap-[3px]" style={{ gridTemplateColumns: 'repeat(12, 1fr)' }}>
+            {Array.from({ length: 12 }, (_, week) => (
+              <div key={week} className="flex flex-col gap-[3px]">
+                {cells.slice(week * 7, week * 7 + 7).map((cell, d) => (
+                  <div
+                    key={d}
+                    title={cell.date}
+                    className="rounded-sm"
+                    style={{
+                      width: '100%',
+                      aspectRatio: '1',
+                      backgroundColor: cell.has
+                        ? '#8ea394'
+                        : cell.isToday
+                          ? '#ede8db'
+                          : '#cdc6b6',
+                      opacity: cell.has ? 1 : 0.5,
+                    }}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-warm-light mt-1.5">12 weeks · today →</p>
+        </div>
+
+        {/* Approaching maintenance */}
+        {approaching.length > 0 && (
+          <div>
+            <p className="label-overline mb-2">Coming up</p>
+            <div className="space-y-1.5">
+              {approaching.map((a, i) => (
+                <div key={i} className="flex items-center justify-between">
+                  <span className="text-xs text-warm-mid truncate pr-2">{a.task?.name ?? '—'}</span>
+                  <span className="text-[11px] text-warm-light flex-shrink-0">
+                    {format(parseISO(a.due_date_start), 'MMM d')}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // MOBILE ATRIUM
+  // ─────────────────────────────────────────────────────────────────────────
+
+  function AtriumHeader() {
+    const h = new Date().getHours();
+    const period = h < 12 ? 'Morning' : h < 17 ? 'Afternoon' : 'Evening';
+    const firstName = displayName?.split(' ')[0] ?? null;
+    const dueToday = instances.length;
+
+    return (
+      <div className="px-5 pt-6 pb-4">
+        <p className="label-overline mb-1">{getDateOverline()}</p>
+        <h1 className="font-display text-3xl text-charcoal leading-tight">
+          Good {period}{firstName ? `, ${firstName}` : ''}.
+        </h1>
+        {dueToday > 0 ? (
+          <p className="text-warm-mid text-sm mt-1">
+            {spellOut(dueToday)} ritual{dueToday !== 1 ? 's' : ''} today.
+          </p>
+        ) : (
+          <p className="text-warm-mid text-sm mt-1">All tended to.</p>
+        )}
+      </div>
+    );
+  }
+
+  function AtriumCategoryGrid() {
+    // Build category → instance counts
+    const catMap: Record<string, { name: string; dueCount: number; overdueCount: number }> = {};
+    for (const inst of instances) {
+      const cat = inst.task?.category?.name ?? 'Uncategorized';
+      if (!catMap[cat]) catMap[cat] = { name: cat, dueCount: 0, overdueCount: 0 };
+      const status = deriveStatus(inst);
+      if (status === 'due') catMap[cat].dueCount++;
+      else catMap[cat].overdueCount++;
+    }
+    const cats = Object.values(catMap).sort((a, b) => (b.dueCount + b.overdueCount) - (a.dueCount + a.overdueCount));
+
+    if (cats.length === 0) return null;
+
+    return (
+      <div className="px-5 py-4">
+        <p className="label-overline mb-3">Categories</p>
+        <div className="grid grid-cols-2 gap-3">
+          {cats.map(cat => {
+            const color = getCategoryColor(cat.name);
+            return (
+              <Link
+                key={cat.name}
+                href="/tasks"
+                className="bg-stone border border-glow-border rounded-lg px-4 py-3 card-lift"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color.dot }} />
+                  <div className="flex gap-1">
+                    {cat.dueCount > 0 && (
+                      <span className="text-[10px] font-medium bg-sage-lt text-charcoal rounded-pill px-1.5 py-0.5">
+                        {cat.dueCount} today
+                      </span>
+                    )}
+                    {cat.overdueCount > 0 && (
+                      <span className="text-[10px] font-medium rounded-pill px-1.5 py-0.5"
+                        style={{ backgroundColor: 'rgba(192,138,110,0.15)', color: '#2b2823' }}>
+                        {cat.overdueCount} refresh
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <p className="text-sm font-medium text-charcoal">{cat.name}</p>
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  function AtriumStatsRow() {
+    const total   = completedCount + skippedCount;
+    const keptPct = total > 0 ? Math.round((completedCount / total) * 100) : null;
+    const streak  = computeStreak(heatmapDates);
+
+    return (
+      <div className="px-5 py-2">
+        <div className="grid grid-cols-3 gap-3">
+          <div className="bg-stone border border-glow-border rounded-lg p-3 text-center">
+            <p className="font-display text-xl text-charcoal">{keptPct != null ? `${keptPct}%` : '—'}</p>
+            <p className="text-[10px] text-warm-light mt-0.5">kept (30d)</p>
+          </div>
+          <div className="bg-stone border border-glow-border rounded-lg p-3 text-center">
+            <p className="font-display text-xl text-charcoal">{streak}</p>
+            <p className="text-[10px] text-warm-light mt-0.5">day streak</p>
+          </div>
+          <div className="bg-stone border border-glow-border rounded-lg p-3 text-center">
+            <p className="font-display text-xl text-charcoal">{due.length}</p>
+            <p className="text-[10px] text-warm-light mt-0.5">refresh</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function AtriumHeatmap() {
+    if (heatmapDates.length === 0) return null;
+    const completedSet = new Set(heatmapDates);
+    const todayStr = format(today(), 'yyyy-MM-dd');
+    const cells: { date: string; has: boolean; isToday: boolean }[] = [];
+    for (let i = 83; i >= 0; i--) {
+      const d = format(new Date(Date.now() - i * 86400000), 'yyyy-MM-dd');
+      cells.push({ date: d, has: completedSet.has(d), isToday: d === todayStr });
+    }
+
+    return (
+      <div className="px-5 py-4">
+        <p className="label-overline mb-3">Activity</p>
+        <div className="grid gap-[3px]" style={{ gridTemplateColumns: 'repeat(12, 1fr)' }}>
+          {Array.from({ length: 12 }, (_, week) => (
+            <div key={week} className="flex flex-col gap-[3px]">
+              {cells.slice(week * 7, week * 7 + 7).map((cell, d) => (
+                <div
+                  key={d}
+                  className="rounded-sm"
+                  style={{ width: '100%', aspectRatio: '1', backgroundColor: cell.has ? '#8ea394' : '#cdc6b6', opacity: cell.has ? 1 : 0.45 }}
+                />
+              ))}
+            </div>
+          ))}
+        </div>
+        <p className="text-[10px] text-warm-light mt-1.5">Past 12 weeks</p>
       </div>
     );
   }
@@ -914,59 +1084,35 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
 
         <p className="text-xs font-medium text-warm-mid uppercase tracking-wide mb-2">When did you do this?</p>
         <div className="flex gap-2 mb-4">
-          <button
-            type="button"
-            onClick={() => setCompletionDateMode('scheduled')}
-            className={`flex-1 rounded-md px-3 py-2.5 text-sm border text-left ${
-              completionDateMode === 'scheduled'
-                ? 'bg-charcoal border-charcoal text-cream'
-                : 'bg-taupe border-glow-border text-charcoal hover:bg-stone'
-            }`}
-          >
+          <button type="button" onClick={() => setCompletionDateMode('scheduled')}
+            className={`flex-1 rounded-md px-3 py-2.5 text-sm border text-left ${completionDateMode === 'scheduled' ? 'bg-charcoal border-charcoal text-cream' : 'bg-taupe border-glow-border text-charcoal hover:bg-stone'}`}>
             <span className="block font-medium">Scheduled date</span>
-            <span className="block text-xs opacity-75 mt-0.5">
-              {format(parseISO(instance.due_date_start), 'MMM d')}
-            </span>
+            <span className="block text-xs opacity-75 mt-0.5">{format(parseISO(instance.due_date_start), 'MMM d')}</span>
           </button>
-          <button
-            type="button"
-            onClick={() => setCompletionDateMode('custom')}
-            className={`flex-1 rounded-md px-3 py-2.5 text-sm border text-left ${
-              completionDateMode === 'custom'
-                ? 'bg-charcoal border-charcoal text-cream'
-                : 'bg-taupe border-glow-border text-charcoal hover:bg-stone'
-            }`}
-          >
+          <button type="button" onClick={() => setCompletionDateMode('custom')}
+            className={`flex-1 rounded-md px-3 py-2.5 text-sm border text-left ${completionDateMode === 'custom' ? 'bg-charcoal border-charcoal text-cream' : 'bg-taupe border-glow-border text-charcoal hover:bg-stone'}`}>
             <span className="block font-medium">Different date</span>
             <span className="block text-xs opacity-75 mt-0.5">Pick a date</span>
           </button>
         </div>
 
         {completionDateMode === 'custom' && (
-          <input
-            type="date" value={completionDate} max={format(today(), 'yyyy-MM-dd')}
-            onChange={e => setCompletionDate(e.target.value)}
-            className="w-full mb-4"
-          />
+          <input type="date" value={completionDate} max={format(today(), 'yyyy-MM-dd')}
+            onChange={e => setCompletionDate(e.target.value)} className="w-full mb-4" />
         )}
 
         <label className="block text-xs font-medium text-warm-mid uppercase tracking-wide mb-1.5">Cost (optional)</label>
         <div className="relative mb-5">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-warm-light text-sm">$</span>
-          <input
-            type="number" min={0} step="0.01" value={completionCost}
+          <input type="number" min={0} step="0.01" value={completionCost}
             onChange={e => setCompletionCost(e.target.value)}
             placeholder={instance.task?.default_cost != null ? String(instance.task.default_cost) : '0.00'}
-            className="w-full pl-7"
-          />
+            className="w-full pl-7" />
         </div>
         <div className="flex gap-2">
           <button onClick={() => setCompleteModal(null)} className="flex-1 border border-glow-border text-warm-mid text-sm rounded-pill py-2.5 hover:bg-taupe">Cancel</button>
-          <button
-            onClick={() => handleComplete(instance)}
-            disabled={loading === instance.id}
-            className="flex-1 bg-charcoal text-cream text-sm font-medium rounded-pill py-2.5 disabled:opacity-50 hover:bg-charcoal/90"
-          >
+          <button onClick={() => handleComplete(instance)} disabled={loading === instance.id}
+            className="flex-1 bg-charcoal text-cream text-sm font-medium rounded-pill py-2.5 disabled:opacity-50 hover:bg-charcoal/90">
             {loading === instance.id ? 'Saving…' : 'Mark Kept'}
           </button>
         </div>
@@ -982,18 +1128,12 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
         <p className="label-overline mb-4">Nudge</p>
         <p className="text-sm text-warm-mid mb-4">{instance.task?.name}</p>
         <label className="block text-xs font-medium text-warm-mid uppercase tracking-wide mb-1.5">Days to nudge forward</label>
-        <input
-          type="number" min={1} max={30} value={snoozeDays}
-          onChange={e => setSnoozeDays(Number(e.target.value))}
-          className="w-full mb-5"
-        />
+        <input type="number" min={1} max={30} value={snoozeDays}
+          onChange={e => setSnoozeDays(Number(e.target.value))} className="w-full mb-5" />
         <div className="flex gap-2">
           <button onClick={() => setSnoozeModal(null)} className="flex-1 border border-glow-border text-warm-mid text-sm rounded-pill py-2.5 hover:bg-taupe">Cancel</button>
-          <button
-            onClick={() => handleSnooze(instance)}
-            disabled={loading === instance.id}
-            className="flex-1 bg-charcoal text-cream text-sm font-medium rounded-pill py-2.5 disabled:opacity-50 hover:bg-charcoal/90"
-          >
+          <button onClick={() => handleSnooze(instance)} disabled={loading === instance.id}
+            className="flex-1 bg-charcoal text-cream text-sm font-medium rounded-pill py-2.5 disabled:opacity-50 hover:bg-charcoal/90">
             {loading === instance.id ? 'Saving…' : 'Nudge'}
           </button>
         </div>
@@ -1004,81 +1144,49 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
   function AdjustEventModal() {
     if (!adjustModal) return null;
     const { instance } = adjustModal;
-    const adjustedPreview =
-      eventDate && daysBefore > 0
-        ? format(new Date(new Date(eventDate + 'T00:00:00').getTime() - daysBefore * 86400000), 'MMM d, yyyy')
-        : null;
+    const adjustedPreview = eventDate && daysBefore > 0
+      ? format(new Date(new Date(eventDate + 'T00:00:00').getTime() - daysBefore * 86400000), 'MMM d, yyyy')
+      : null;
 
     return (
       <Modal onClose={() => setAdjustModal(null)}>
         <p className="label-overline mb-1">Adjust for event</p>
         <p className="text-sm text-warm-mid mb-4">{instance.task?.name}</p>
-
         <div className="space-y-3">
           <div>
             <label className="block text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide">Event name *</label>
-            <input
-              type="text" value={eventName} onChange={e => setEventName(e.target.value)}
-              placeholder="e.g. Vacation to Italy"
-              className="w-full"
-            />
+            <input type="text" value={eventName} onChange={e => setEventName(e.target.value)} placeholder="e.g. Vacation to Italy" className="w-full" />
           </div>
           <div>
             <label className="block text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide">Event date *</label>
-            <input
-              type="date" value={eventDate}
-              min={format(today(), 'yyyy-MM-dd')}
-              onChange={e => setEventDate(e.target.value)}
-              className="w-full"
-            />
+            <input type="date" value={eventDate} min={format(today(), 'yyyy-MM-dd')} onChange={e => setEventDate(e.target.value)} className="w-full" />
           </div>
           <div>
             <label className="block text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide">Days before event</label>
-            <input
-              type="number" min={1} max={90} value={daysBefore}
-              onChange={e => setDaysBefore(Number(e.target.value))}
-              className="w-full"
-            />
+            <input type="number" min={1} max={90} value={daysBefore} onChange={e => setDaysBefore(Number(e.target.value))} className="w-full" />
           </div>
-
           {adjustedPreview && (
             <div className="bg-taupe border border-glow-border rounded-md p-3 text-xs text-warm-mid">
               Moves to <span className="font-medium text-charcoal">{adjustedPreview}</span>
               {eventName && ` — ${daysBefore}d before ${eventName}`}.
             </div>
           )}
-
           <div className="flex items-start gap-2">
-            <input
-              type="checkbox" id="resumeNormalModal" checked={resumeNormal}
-              onChange={e => setResumeNormal(e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-glow-border"
-            />
-            <label htmlFor="resumeNormalModal" className="text-sm text-charcoal">
-              Resume normal cadence after event
-            </label>
+            <input type="checkbox" id="resumeNormalModal" checked={resumeNormal}
+              onChange={e => setResumeNormal(e.target.checked)} className="mt-0.5 h-4 w-4 rounded border-glow-border" />
+            <label htmlFor="resumeNormalModal" className="text-sm text-charcoal">Resume normal cadence after event</label>
           </div>
-
           {!resumeNormal && (
             <div>
               <label className="block text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide">Next instance date after event</label>
-              <input
-                type="date" value={overrideNextDate}
-                min={eventDate || format(today(), 'yyyy-MM-dd')}
-                onChange={e => setOverrideNextDate(e.target.value)}
-                className="w-full"
-              />
+              <input type="date" value={overrideNextDate} min={eventDate || format(today(), 'yyyy-MM-dd')} onChange={e => setOverrideNextDate(e.target.value)} className="w-full" />
             </div>
           )}
         </div>
-
         <div className="flex gap-2 mt-5">
           <button onClick={() => setAdjustModal(null)} className="flex-1 border border-glow-border text-warm-mid text-sm rounded-pill py-2 hover:bg-taupe transition-colors">Cancel</button>
-          <button
-            onClick={() => handleAdjustForEvent(instance)}
-            disabled={loading === instance.id || !eventName.trim() || !eventDate}
-            className="flex-1 bg-charcoal text-cream text-sm font-medium rounded-pill py-2 disabled:opacity-50"
-          >
+          <button onClick={() => handleAdjustForEvent(instance)} disabled={loading === instance.id || !eventName.trim() || !eventDate}
+            className="flex-1 bg-charcoal text-cream text-sm font-medium rounded-pill py-2 disabled:opacity-50">
             {loading === instance.id ? 'Saving…' : 'Confirm'}
           </button>
         </div>
@@ -1098,29 +1206,20 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
           <span className="font-medium text-charcoal">{instance.task?.name}</span>?
         </p>
         <div className="space-y-2 mb-3">
-          <button
-            onClick={() => handleDeleteInstance(instance)}
-            disabled={isDeleting}
-            className="w-full border border-glow-border text-left rounded-lg px-4 py-3 hover:bg-taupe transition-colors disabled:opacity-50"
-          >
+          <button onClick={() => handleDeleteInstance(instance)} disabled={isDeleting}
+            className="w-full border border-glow-border text-left rounded-lg px-4 py-3 hover:bg-taupe transition-colors disabled:opacity-50">
             <span className="block text-sm font-semibold text-charcoal">Remove just this instance</span>
             <span className="block text-xs text-warm-light mt-0.5">The series will continue with the next scheduled instance.</span>
           </button>
-          <button
-            onClick={() => handleDeleteTask(instance)}
-            disabled={isDeleting}
-            className="w-full border border-dust bg-dust-lt text-left rounded-lg px-4 py-3 hover:bg-dust/20 transition-colors disabled:opacity-50"
-          >
+          <button onClick={() => handleDeleteTask(instance)} disabled={isDeleting}
+            className="w-full border border-dust bg-dust-lt text-left rounded-lg px-4 py-3 hover:bg-dust/20 transition-colors disabled:opacity-50">
             <span className="block text-sm font-semibold text-charcoal">Remove entire ritual and all instances</span>
             <span className="block text-xs text-warm-mid mt-0.5">This cannot be undone.</span>
           </button>
         </div>
         {isDeleting && <p className="text-xs text-center text-warm-light mb-3">Removing…</p>}
-        <button
-          onClick={() => setDeleteModal(null)}
-          disabled={isDeleting}
-          className="w-full border border-glow-border text-warm-mid text-sm rounded-pill py-2 hover:bg-taupe transition-colors disabled:opacity-50"
-        >
+        <button onClick={() => setDeleteModal(null)} disabled={isDeleting}
+          className="w-full border border-glow-border text-warm-mid text-sm rounded-pill py-2 hover:bg-taupe transition-colors disabled:opacity-50">
           Cancel
         </button>
       </Modal>
@@ -1128,98 +1227,475 @@ export default function DashboardClient({ instances: initial, conflictCounts = {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
+  // DESKTOP CARDS
+  // ─────────────────────────────────────────────────────────────────────────
+
+  function InSequenceList() {
+    if (instances.length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full py-16 px-5 text-center">
+          <p className="font-display text-xl text-charcoal mb-1">All tended to.</p>
+          <p className="text-xs text-warm-light">No rituals due today.</p>
+          <Link href="/tasks/new" className="mt-6 text-xs bg-charcoal text-cream font-medium rounded-pill px-4 py-2 hover:bg-charcoal/90">
+            + Add ritual
+          </Link>
+        </div>
+      );
+    }
+
+    return (
+      <div>
+        {instances.map((instance, i) => {
+          const isNow = i === 0;
+          const isOverdue = differenceInDays(today(), parseISO(instance.due_date_end)) > 0;
+          const isLoadingThis = loading === instance.id;
+          const dateLabel = format(parseISO(instance.due_date_start), 'MMM d');
+
+          async function instantKeep() {
+            setLoading(instance.id);
+            const { next } = await completeInstance(instance.id, instance.task as Task, today(), null);
+            removeInstance(instance.id);
+            if (next) {
+              setInstances(prev =>
+                [...prev, { ...next, task: instance.task } as InstanceWithTask]
+                  .sort((a, b) => a.due_date_start.localeCompare(b.due_date_start))
+              );
+            }
+            const routineId = (instance.task as unknown as { routine?: { id: string } }).routine?.id;
+            if (routineId) detectRoutineConflicts(routineId).catch(console.error);
+            setLoading(null);
+          }
+
+          async function instantPass() {
+            setLoading(instance.id);
+            const { next } = await skipInstance(instance.id, instance.task as Task);
+            removeInstance(instance.id);
+            if (next) {
+              setInstances(prev =>
+                [...prev, { ...next, task: instance.task } as InstanceWithTask]
+                  .sort((a, b) => a.due_date_start.localeCompare(b.due_date_start))
+              );
+            }
+            const routineId = (instance.task as unknown as { routine?: { id: string } }).routine?.id;
+            if (routineId) detectRoutineConflicts(routineId).catch(console.error);
+            setLoading(null);
+          }
+
+          return (
+            <div
+              key={instance.id}
+              className={`flex items-center gap-3 px-5 py-3.5 border-b border-glow-border last:border-b-0 ${isNow ? 'bg-cream/40' : ''}`}
+            >
+              {/* Date / NOW */}
+              <div className="w-[52px] flex-shrink-0 flex justify-center">
+                {isNow ? (
+                  <span
+                    className="text-[9px] font-semibold uppercase tracking-widest px-2 py-0.5 rounded-full"
+                    style={{ background: '#2b2823', color: '#efe9dd' }}
+                  >
+                    NOW
+                  </span>
+                ) : (
+                  <span className={`text-[11px] ${isOverdue ? 'text-dust font-medium' : 'text-warm-light'}`}>
+                    {dateLabel}
+                  </span>
+                )}
+              </div>
+
+              {/* Name + meta */}
+              <Link href={`/instances/${instance.id}`} className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-charcoal truncate">{instance.task?.name}</p>
+                <p className="text-[11px] text-warm-light mt-0.5 truncate">
+                  {instance.task?.category?.name ?? ''}
+                  {isOverdue && <span className="text-dust ml-1">· ready</span>}
+                </p>
+              </Link>
+
+              {/* Circle + Pass */}
+              <div className="flex-shrink-0 flex flex-col items-center gap-1">
+                <button
+                  onClick={instantKeep}
+                  disabled={isLoadingThis}
+                  title="Mark kept"
+                  className="w-7 h-7 rounded-full border-[1.5px] border-glow-border hover:border-sage hover:bg-sage/10 transition-colors disabled:opacity-40 flex items-center justify-center text-warm-light hover:text-sage"
+                >
+                  {isLoadingThis ? (
+                    <span className="text-[10px]">…</span>
+                  ) : (
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  )}
+                </button>
+                <button
+                  onClick={instantPass}
+                  disabled={isLoadingThis}
+                  className="text-[10px] text-warm-light hover:text-charcoal transition-colors disabled:opacity-40 leading-none"
+                >
+                  Pass
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  function RhythmCalendarCard() {
+    const now = today();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const monthLabel = now.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const rawFirstDay = new Date(year, month, 1).getDay();
+    const firstMondayOffset = (rawFirstDay + 6) % 7;
+
+    const completedSet = new Set(heatmapDates);
+    const todayStr = format(now, 'yyyy-MM-dd');
+
+    const cells: (number | null)[] = [
+      ...Array(firstMondayOffset).fill(null),
+      ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+    ];
+
+    const total = completedCount + skippedCount;
+    const keptPct = total > 0 ? Math.round((completedCount / total) * 100) : null;
+    const streak = computeStreak(heatmapDates);
+
+    return (
+      <div className="space-y-5">
+        {/* Monthly calendar heatmap */}
+        <div>
+          <p className="text-[11px] font-medium text-charcoal mb-2">{monthLabel}</p>
+          <div className="grid grid-cols-7 gap-[3px] mb-1">
+            {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, idx) => (
+              <div key={idx} className="text-center text-[9px] text-warm-light py-0.5">{d}</div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-[3px]">
+            {cells.map((day, idx) => {
+              if (!day) return <div key={idx} className="aspect-square" />;
+              const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+              const has = completedSet.has(dateStr);
+              const isToday = dateStr === todayStr;
+              const isPast = dateStr < todayStr;
+              return (
+                <div
+                  key={idx}
+                  title={dateStr}
+                  className="aspect-square rounded-sm flex items-center justify-center"
+                  style={{
+                    backgroundColor: has ? '#8ea394' : isPast ? '#cdc6b6' : isToday ? '#ede8db' : 'transparent',
+                    border: isToday ? '1px solid #a8a297' : 'none',
+                    opacity: has ? 1 : isPast ? 0.4 : isToday ? 1 : 0.25,
+                  }}
+                >
+                  <span style={{ fontSize: '9px', color: has ? '#efe9dd' : isToday ? '#2b2823' : '#6b665e' }}>
+                    {day}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Stats row */}
+        <div className="grid grid-cols-3 gap-3 pt-4 border-t border-glow-border">
+          <div className="text-center">
+            <p className="font-display text-xl text-charcoal">{keptPct != null ? `${keptPct}%` : '—'}</p>
+            <p className="text-[10px] text-warm-light mt-0.5">kept</p>
+          </div>
+          <div className="text-center">
+            <p className="font-display text-xl text-charcoal">{streak}</p>
+            <p className="text-[10px] text-warm-light mt-0.5">streak</p>
+          </div>
+          <div className="text-center">
+            <p className="font-display text-xl text-charcoal">{due.length}</p>
+            <p className="text-[10px] text-warm-light mt-0.5">refresh</p>
+          </div>
+        </div>
+
+        {/* Approaching — prose sentences */}
+        {approaching.length > 0 && (
+          <div className="pt-4 border-t border-glow-border">
+            <p className="label-overline mb-2">Coming up</p>
+            <div className="space-y-1.5">
+              {approaching.map((a, i) => {
+                const daysUntil = differenceInDays(parseISO(a.due_date_start), today());
+                const when = daysUntil === 0 ? 'today' : daysUntil === 1 ? 'tomorrow' : `in ${daysUntil} days`;
+                return (
+                  <p key={i} className="text-xs text-warm-mid leading-snug">
+                    <span className="font-medium text-charcoal">{a.task?.name ?? '—'}</span>{' '}{when}.
+                  </p>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  function DesktopSpendingPanel() {
+    const thisMonthStr = format(today(), 'yyyy-MM');
+    const entries = spendingData ?? [];
+    const planned = plannedData ?? [];
+
+    if (spendingLoading) {
+      return <p className="text-sm text-warm-light text-center py-8">Loading…</p>;
+    }
+
+    const hasAnyData = entries.length > 0 || planned.length > 0;
+    if (!hasAnyData) {
+      return (
+        <p className="text-sm text-warm-light text-center py-8">
+          No cost data yet. Add a typical cost to your rituals, then log it when marking kept.
+        </p>
+      );
+    }
+
+    const thisMonthSpent = entries
+      .filter(e => e.actual_completion_date.startsWith(thisMonthStr))
+      .reduce((s, e) => s + e.cost, 0);
+
+    function plannedForMonth(m: string) {
+      return planned
+        .filter(p => p.due_date_start.startsWith(m) && p.task?.default_cost != null)
+        .reduce((s, p) => s + (p.task!.default_cost as number), 0);
+    }
+    const thisMonthPlanned = plannedForMonth(thisMonthStr);
+
+    const pastMonthSpend: Record<string, number> = {};
+    for (const e of entries) {
+      const m = e.actual_completion_date.slice(0, 7);
+      if (m < thisMonthStr) pastMonthSpend[m] = (pastMonthSpend[m] ?? 0) + e.cost;
+    }
+    const pastVals = Object.values(pastMonthSpend);
+    const monthlyAvg = pastVals.length > 0 ? pastVals.reduce((s, v) => s + v, 0) / pastVals.length : 0;
+
+    const catMap: Record<string, { name: string; color: string; spent: number; planned: number }> = {};
+    for (const e of entries.filter(e => e.actual_completion_date.startsWith(thisMonthStr))) {
+      const name = e.task?.category?.name ?? 'Other';
+      if (!catMap[name]) catMap[name] = { name, color: getCategoryColor(name).dot, spent: 0, planned: 0 };
+      catMap[name].spent += e.cost;
+    }
+    for (const p of planned.filter(p => p.due_date_start.startsWith(thisMonthStr) && p.task?.default_cost != null)) {
+      const name = p.task?.category?.name ?? 'Other';
+      if (!catMap[name]) catMap[name] = { name, color: getCategoryColor(name).dot, spent: 0, planned: 0 };
+      catMap[name].planned += p.task!.default_cost as number;
+    }
+    const catList = Object.values(catMap).sort((a, b) => (b.spent + b.planned) - (a.spent + a.planned));
+    const maxCat = Math.max(...catList.map(c => c.spent + c.planned), 1);
+
+    return (
+      <div className="space-y-5">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-taupe rounded-md p-4">
+            <p className="label-overline mb-1">Spent</p>
+            <p className="font-display text-2xl text-charcoal">${thisMonthSpent.toFixed(2)}</p>
+            {thisMonthPlanned > 0 && <p className="text-xs text-warm-mid mt-0.5">+${thisMonthPlanned.toFixed(2)} planned</p>}
+          </div>
+          <div className="bg-taupe rounded-md p-4">
+            <p className="label-overline mb-1">Monthly avg</p>
+            <p className="font-display text-2xl text-charcoal">${monthlyAvg.toFixed(2)}</p>
+          </div>
+        </div>
+        {catList.length > 0 && (
+          <div>
+            <p className="label-overline mb-3">By category</p>
+            <div className="space-y-2">
+              {catList.map(cat => (
+                <div key={cat.name} className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />
+                  <span className="text-xs text-warm-mid w-24 truncate">{cat.name}</span>
+                  <div className="flex-1 h-1.5 bg-taupe rounded-full overflow-hidden flex">
+                    <div className="h-full" style={{ width: `${(cat.spent / maxCat) * 100}%`, backgroundColor: cat.color }} />
+                    <div className="h-full opacity-30" style={{ width: `${(cat.planned / maxCat) * 100}%`, backgroundColor: cat.color }} />
+                  </div>
+                  <span className="text-xs text-warm-mid w-14 text-right">${cat.spent.toFixed(0)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
   // ROOT RENDER
   // ─────────────────────────────────────────────────────────────────────────
 
-  const greeting = getEditorialGreeting(instances.length, due.length);
+  const greeting = getEditorialGreeting(instances.length, due.length, displayName);
   const dateOverline = getDateOverline();
   const totalConflicts = Object.values(conflictCounts).reduce((s, n) => s + n, 0);
 
   return (
-    <div className="space-y-8">
-      {/* Editorial header */}
-      <header className="pb-2">
-        <p className="label-overline mb-2">{dateOverline}</p>
-        <h1 className="font-display text-4xl text-charcoal leading-tight mb-2">{greeting}</h1>
-        <div className="flex items-center gap-3 flex-wrap">
-          <p className="text-warm-mid text-sm">{instances.length} ritual{instances.length !== 1 ? 's' : ''} on the horizon</p>
-          {totalConflicts > 0 && (
-            <span className="text-xs bg-dust-lt text-charcoal rounded-pill px-2.5 py-1">
-              {totalConflicts} overlap{totalConflicts !== 1 ? 's' : ''}
-            </span>
-          )}
-          <div className="ml-auto flex items-center gap-2">
-            {ViewToggle()}
-            <Link href="/tasks/new" className="text-sm bg-charcoal text-cream font-medium rounded-pill px-4 py-1.5 hover:bg-charcoal/90">
-              + Add
-            </Link>
-          </div>
-        </div>
-      </header>
+    <>
+      {/* ── Desktop: header + three equal cards ──────────────────────────── */}
+      <div className="hidden lg:flex flex-col h-screen">
 
-      {/* Suggestions */}
-      {(conflicts.length > 0 || syncs.length > 0) && (
-        <div className="bg-stone border border-glow-border rounded-lg shadow-card overflow-hidden">
-          <button
-            onClick={() => setSuggestionsOpen(o => !o)}
-            className="w-full flex items-center justify-between px-5 py-4 hover:bg-taupe transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <p className="label-overline">Suggestions</p>
-              <span className="text-xs font-medium bg-dust-lt text-charcoal rounded-pill px-2 py-0.5">
-                {conflicts.length + syncs.length}
+        {/* Page header */}
+        <header className="flex-shrink-0 px-8 pt-7 pb-5 border-b border-glow-border">
+          <p className="label-overline mb-1.5">{dateOverline}</p>
+          <h1 className="font-display text-3xl text-charcoal leading-tight">{greeting}</h1>
+          <div className="flex items-center gap-3 mt-2">
+            <p className="text-warm-mid text-sm">
+              {spellOut(instances.length)} ritual{instances.length !== 1 ? 's' : ''} today
+            </p>
+            {totalConflicts > 0 && (
+              <span
+                className="text-[11px] font-medium rounded-pill px-2.5 py-0.5"
+                style={{ backgroundColor: 'rgba(192,138,110,0.12)', border: '1px solid #c08a6e', color: '#2b2823' }}
+              >
+                {totalConflicts} overlap{totalConflicts !== 1 ? 's' : ''}
               </span>
+            )}
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                onClick={() => { setSpendingOpen(o => !o); if (spendingData === null) fetchSpending(); }}
+                className="text-sm border border-glow-border text-warm-mid rounded-pill px-4 py-1.5 hover:bg-taupe transition-colors"
+              >
+                This month
+              </button>
+              <Link href="/tasks/new" className="text-sm bg-charcoal text-cream font-medium rounded-pill px-4 py-1.5 hover:bg-charcoal/90">
+                + Log a ritual
+              </Link>
             </div>
-            <span className="text-warm-light text-xs">{suggestionsOpen ? '▲' : '▼'}</span>
-          </button>
+          </div>
+        </header>
 
-          {suggestionsOpen && (
-            <div className="px-5 pb-5 border-t border-glow-border pt-4 space-y-4">
-              {conflicts.map(s => (
-                <div key={`${s.taskA.id}__${s.taskB.id}`} className="border-l-[3px] border-conflict pl-4 py-1 space-y-2">
-                  <p className="label-overline" style={{ color: 'var(--color-accent-dust)' }}>Overlap</p>
-                  <p className="text-sm text-charcoal">{s.suggestionText ?? `${s.taskA.name} and ${s.taskB.name} may conflict.`}</p>
-                  <div className="flex gap-4 items-center">
-                    {s.taskA.routine_id && (
-                      <Link href={`/routines/${s.taskA.routine_id}`} className="text-xs text-charcoal underline-offset-2 hover:underline font-medium">
-                        Set rule →
-                      </Link>
-                    )}
-                    <button onClick={() => handleDismiss(s)} className="text-xs text-warm-light hover:text-charcoal">Dismiss</button>
-                  </div>
+        {/* Three equal cards */}
+        <div className="flex-1 min-h-0 flex gap-5 px-8 py-6">
+
+          {/* Card: In sequence */}
+          <div
+            className="flex-1 min-w-0 flex flex-col bg-stone border border-glow-border rounded-2xl overflow-hidden"
+            style={{ boxShadow: '0 1px 3px rgba(43,40,35,0.06)' }}
+          >
+            <div className="flex-shrink-0 px-5 pt-5 pb-3 border-b border-glow-border">
+              <p className="label-overline">In sequence</p>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {InSequenceList()}
+            </div>
+          </div>
+
+          {/* Card: Rhythm */}
+          <div
+            className="flex-1 min-w-0 flex flex-col bg-stone border border-glow-border rounded-2xl overflow-hidden"
+            style={{ boxShadow: '0 1px 3px rgba(43,40,35,0.06)' }}
+          >
+            <div className="flex-shrink-0 px-5 pt-5 pb-3 border-b border-glow-border">
+              <p className="label-overline">Rhythm</p>
+            </div>
+            <div className="flex-1 overflow-y-auto px-5 py-4">
+              {RhythmCalendarCard()}
+            </div>
+          </div>
+
+          {/* Card: Shelf */}
+          <div
+            className="flex-1 min-w-0 flex flex-col bg-stone border border-glow-border rounded-2xl overflow-hidden"
+            style={{ boxShadow: '0 1px 3px rgba(43,40,35,0.06)' }}
+          >
+            <div className="flex-shrink-0 px-5 pt-5 pb-3 border-b border-glow-border flex items-center justify-between">
+              <p className="label-overline">Shelf</p>
+              <Link href="/tasks" className="text-[11px] text-warm-light hover:text-charcoal transition-colors">
+                See all →
+              </Link>
+            </div>
+            <div className="flex-1 flex items-center justify-center px-5 py-4">
+              <p className="text-sm text-warm-light">Your shelf is stocked.</p>
+            </div>
+          </div>
+
+        </div>
+
+        {/* "This month" spending overlay */}
+        {spendingOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-start justify-center pt-24"
+            style={{ background: 'rgba(44,42,38,0.35)', backdropFilter: 'blur(4px)' }}
+            onClick={() => setSpendingOpen(false)}
+          >
+            <div
+              className="bg-[#FFFFFF] rounded-xl w-full max-w-lg mx-8 border border-glow-border max-h-[65vh] overflow-y-auto"
+              style={{ boxShadow: 'var(--shadow-modal)' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-glow-border">
+                <p className="label-overline">This month</p>
+                <button
+                  onClick={() => setSpendingOpen(false)}
+                  className="text-warm-light hover:text-charcoal transition-colors"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
+              <div className="px-6 py-5">
+                {DesktopSpendingPanel()}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Mobile: Atrium layout ─────────────────────────────────────────── */}
+      <div className="lg:hidden">
+        {AtriumHeader()}
+        {AtriumCategoryGrid()}
+        {AtriumStatsRow()}
+        {AtriumHeatmap()}
+
+        {/* Today instance list below Atrium */}
+        <div className="px-5 pt-4 pb-8 space-y-8">
+          {/* Suggestions (collapsed) */}
+          {(conflicts.length > 0 || syncs.length > 0) && (
+            <div className="bg-stone border border-glow-border rounded-lg shadow-card overflow-hidden">
+              <button onClick={() => setSuggestionsOpen(o => !o)}
+                className="w-full flex items-center justify-between px-5 py-4 hover:bg-taupe transition-colors">
+                <div className="flex items-center gap-2">
+                  <p className="label-overline">Suggestions</p>
+                  <span className="text-xs font-medium bg-dust-lt text-charcoal rounded-pill px-2 py-0.5">{conflicts.length + syncs.length}</span>
                 </div>
-              ))}
-              {syncs.map(s => (
-                <div key={`${s.taskA.id}__${s.taskB.id}`} className="border-l-[3px] border-sage pl-4 py-1 space-y-2">
-                  <p className="label-overline" style={{ color: 'var(--color-accent-sage)' }}>Sync</p>
-                  <p className="text-sm text-charcoal">{s.suggestionText ?? `${s.taskA.name} and ${s.taskB.name} are often done together.`}</p>
-                  <div className="flex gap-4 items-center">
-                    {(s.taskA.routine_id || s.taskB.routine_id) && (
-                      <Link href={`/routines/${s.taskA.routine_id ?? s.taskB.routine_id}`} className="text-xs text-charcoal underline-offset-2 hover:underline font-medium">
-                        Add to routine →
-                      </Link>
-                    )}
-                    <button onClick={() => handleDismiss(s)} className="text-xs text-warm-light hover:text-charcoal">Dismiss</button>
-                  </div>
+                <span className="text-warm-light text-xs">{suggestionsOpen ? '▲' : '▼'}</span>
+              </button>
+              {suggestionsOpen && (
+                <div className="px-5 pb-5 border-t border-glow-border pt-4 space-y-4">
+                  {[...conflicts, ...syncs].map(s => (
+                    <div key={`${s.taskA.id}__${s.taskB.id}`} className="border-l-[3px] border-glow-border pl-4 py-1 space-y-1">
+                      <p className="text-sm text-charcoal">{s.taskA.name} + {s.taskB.name}</p>
+                      <button onClick={() => handleDismiss(s)} className="text-xs text-warm-light hover:text-charcoal">Dismiss</button>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           )}
+
+          {/* View toggle */}
+          <div className="flex items-center justify-between">
+            <p className="label-overline">Today</p>
+            <div className="flex items-center gap-2">
+              {ViewToggle()}
+              <Link href="/tasks/new" className="text-sm bg-charcoal text-cream font-medium rounded-pill px-3 py-1.5 hover:bg-charcoal/90">+ Add</Link>
+            </div>
+          </div>
+
+          {viewMode === 'list' ? ListView() : CalendarView()}
         </div>
-      )}
+      </div>
 
-      {/* Spending section */}
-      {SpendingSection()}
-
-      {/* Main view */}
-      {viewMode === 'list' ? ListView() : CalendarView()}
-
-      {/* Modals */}
+      {/* Modals (shared) */}
       {CompleteModal()}
       {SnoozeModal()}
       {AdjustEventModal()}
       {DeleteModal()}
-    </div>
+    </>
   );
 }
 

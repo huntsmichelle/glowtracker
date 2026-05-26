@@ -30,7 +30,7 @@ export default async function RoutineTemplateDetailPage({ params }: Props) {
   const t = template as Routine & { tasks?: Task[] };
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-2xl mx-auto px-5 py-8 space-y-6">
       <div className="flex items-center gap-2">
         <Link href="/routines" className="text-sm text-warm-light hover:text-charcoal">
           Routines

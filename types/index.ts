@@ -15,11 +15,13 @@ export type NoConflictOrder = 'a_first' | 'b_first';
 
 // ─── Routine (Phase 2 — task group) ──────────────────────────────────────────
 
-export type ConflictResolution = 'ask' | 'no_conflict' | 'auto_adjust' | 'skip_one';
-export type DelayTarget        = 'a' | 'b';
-export type AdjustDirection    = 'forward' | 'back';
-export type SkipTarget         = 'a' | 'b';
-export type ConflictStatus     = 'pending' | 'resolved';
+export type ConflictResolution  = 'ask' | 'no_conflict' | 'auto_adjust' | 'skip_one';
+export type ProximityResolution = 'ask' | 'looks_good' | 'auto_adjust' | 'remind_closer';
+export type DelayTarget         = 'a' | 'b';
+export type AdjustDirection     = 'forward' | 'back';
+export type SkipTarget          = 'a' | 'b';
+export type ConflictStatus      = 'pending' | 'resolved';
+export type ConflictType        = 'same_day' | 'proximity';
 
 export type ConflictIntent = 'unset' | 'independent' | 'managed';
 
@@ -32,7 +34,11 @@ export interface Routine {
   color: string;
   is_template: boolean;
   is_public: boolean;
+  is_system_template: boolean;
   template_source_id: string | null;
+  template_category: string | null;
+  template_description: string | null;
+  template_task_count: number | null;
   conflict_intent: ConflictIntent;
   created_at: string;
   updated_at: string;
@@ -56,6 +62,11 @@ export interface RoutineTaskPair {
   no_conflict_order: NoConflictOrder | null;
   no_conflict_time_a: string | null;  // HH:MM
   no_conflict_time_b: string | null;  // HH:MM
+  // Proximity / timing rules
+  proximity_enabled: boolean;
+  proximity_days: number | null;
+  proximity_first_task: 'a' | 'b' | null;
+  proximity_resolution: ProximityResolution;
   created_at: string;
   // joined
   task_a?: Task;
@@ -82,6 +93,10 @@ export interface RoutineConflict {
   applied_order: NoConflictOrder | null;
   applied_time_a: string | null;
   applied_time_b: string | null;
+  // Proximity conflict fields
+  conflict_type: ConflictType;
+  days_apart: number | null;
+  remind_at: string | null;       // ISO date — re-surface proximity conflict on this date
   created_at: string;
   // joined
   pair?: RoutineTaskPair;

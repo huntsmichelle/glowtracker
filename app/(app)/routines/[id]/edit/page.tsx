@@ -25,5 +25,9 @@ export default async function EditRoutinePage({ params }: Props) {
 
   if (!routine) notFound();
 
-  return <RoutineEditClient routine={routine as Routine} />;
+  return (
+    <div className="max-w-2xl mx-auto px-5 py-8">
+      <RoutineEditClient routine={routine as Routine} />
+    </div>
+  );
 }

@@ -15,6 +15,16 @@ const navLinks = [
     ),
   },
   {
+    href: '/horizon',
+    label: 'Horizon',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
+        <polyline points="16 7 22 7 22 13" />
+      </svg>
+    ),
+  },
+  {
     href: '/tasks',
     label: 'Rituals',
     icon: (
@@ -28,7 +38,8 @@ const navLinks = [
     label: 'Routines',
     icon: (
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
+        <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
+        <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
       </svg>
     ),
   },
@@ -51,7 +62,7 @@ export default function NavBar() {
   return (
     <>
       {/* ── Desktop sidebar ──────────────────────────────────── */}
-      <nav className="hidden lg:flex fixed left-0 top-0 h-screen w-[220px] flex-col bg-stone border-r border-glow-border z-20">
+      <nav className="hidden lg:flex fixed left-0 top-0 h-screen w-[240px] flex-col bg-stone border-r border-glow-border z-20">
         <div className="flex-1 p-6 space-y-8">
           {/* Logo */}
           <Link href="/" className="block">

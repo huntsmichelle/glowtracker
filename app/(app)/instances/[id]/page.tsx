@@ -31,5 +31,9 @@ export default async function InstanceDetailPage({ params }: Props) {
 
   if (!instance) notFound();
 
-  return <InstanceDetailClient instance={instance as InstanceWithTask} />;
+  return (
+    <div className="max-w-2xl mx-auto px-5 py-8">
+      <InstanceDetailClient instance={instance as InstanceWithTask} />
+    </div>
+  );
 }

@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import type { Task, Category, Routine } from '@/types';
+import { getCategoryColor } from '@/lib/categoryColors';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,7 +38,7 @@ export default async function TasksListPage() {
   const total = (tasksList ?? []).length;
 
   return (
-    <div className="space-y-8">
+    <div className="max-w-2xl mx-auto px-5 py-8 space-y-8">
       {/* Header */}
       <div className="flex items-end justify-between">
         <div>
@@ -111,13 +112,17 @@ function TaskRowItem({ task }: { task: TaskRow }) {
       <div className="flex items-center gap-3 min-w-0">
         <span
           className="w-2 h-2 rounded-full flex-shrink-0"
-          style={{ backgroundColor: task.category?.color ?? '#9E9890' }}
+          style={{ backgroundColor: getCategoryColor(task.category?.name ?? '').dot }}
         />
         <span className="text-sm font-medium text-charcoal truncate">{task.name}</span>
         {task.routine && (
           <span
-            className="hidden sm:inline-flex items-center text-[10px] font-medium px-2 py-0.5 rounded-pill text-white flex-shrink-0"
-            style={{ backgroundColor: task.routine.color }}
+            className="hidden sm:inline-flex items-center text-[11px] font-medium px-2.5 py-0.5 rounded-pill flex-shrink-0"
+            style={{
+              border: '1px solid #cdc6b6',
+              backgroundColor: '#f6f1e6',
+              color: '#6b665e',
+            }}
           >
             {task.routine.name}
           </span>

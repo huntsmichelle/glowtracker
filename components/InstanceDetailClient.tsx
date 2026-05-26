@@ -15,6 +15,7 @@ import {
   toISODate,
 } from '@/lib/instanceEngine';
 import type { InstanceWithTask, Task } from '@/types';
+import { getCategoryColor } from '@/lib/categoryColors';
 
 interface Props {
   instance: InstanceWithTask;
@@ -61,7 +62,7 @@ export default function InstanceDetailClient({ instance: initial }: Props) {
   const status       = deriveStatus(instance);
   const isActionable = status !== 'completed' && status !== 'skipped';
   const task         = instance.task!;
-  const categoryColor = task.category?.color ?? '#9E9890';
+  const categoryColor = getCategoryColor(task.category?.name ?? '').dot;
   const isCountdown   = task.mode === 'countdown';
 
   const daysUntil = differenceInDays(parseISO(instance.due_date_start), today());

@@ -143,7 +143,7 @@ export default async function RoutineDetailPage({ params }: Props) {
   }));
 
   return (
-    <div className="space-y-1">
+    <div className="max-w-2xl mx-auto px-5 py-8 space-y-1">
       <div className="flex items-center gap-2 mb-4">
         <Link href="/routines" className="text-sm text-warm-light hover:text-charcoal">
           Routines

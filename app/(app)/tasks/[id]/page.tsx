@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { format, parseISO } from 'date-fns';
 import type { Task, Instance, Category } from '@/types';
 import { deriveStatus } from '@/lib/instanceEngine';
+import { getCategoryColor } from '@/lib/categoryColors';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,14 +58,14 @@ export default async function TaskDetailPage({ params }: Props) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-2xl mx-auto px-5 py-8 space-y-6">
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span
               className="w-3 h-3 rounded-full"
-              style={{ backgroundColor: t.category?.color ?? '#9E9890' }}
+              style={{ backgroundColor: getCategoryColor(t.category?.name ?? '').dot }}
             />
             <span className="text-xs text-warm-light">{t.category?.name ?? 'No category'}</span>
             {t.mode === 'countdown' && (
