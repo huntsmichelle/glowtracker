@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { restockProduct } from '@/lib/productTracking';
+import { restockProduct, usesRemainingFull } from '@/lib/productTracking';
 import { getCategoryColor } from '@/lib/categoryColors';
 import DepletionBar from '@/components/DepletionBar';
 import type { Product, ProductCategory } from '@/types';
@@ -49,13 +49,6 @@ function expiryStatus(product: Product): 'expired' | 'soon' | null {
 function formatExpiry(dateStr: string): string {
   const d = new Date(dateStr);
   return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-}
-
-function computeUsesLeft(product: Product): number | null {
-  if (product.remaining_amount == null || !product.container_size || !product.uses_per_supply_unit) return null;
-  const amtPerUse = product.container_size / product.uses_per_supply_unit;
-  if (amtPerUse <= 0) return null;
-  return Math.round(product.remaining_amount / amtPerUse);
 }
 
 function getCategoryChain(catId: string | null, cats: ProductCategory[]): { top: string; sub: string | null; dotColor: string } | null {
@@ -135,6 +128,7 @@ function AddProductModal({ systemProducts, categories, userId, onClose, onAdded 
   const [name, setName] = useState('');
   const [brand, setBrand] = useState('');
   const [productUrl, setProductUrl] = useState('');
+  const [reorderUrl, setReorderUrl] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [topCatId, setTopCatId] = useState('');
   const [containerSize, setContainerSize] = useState('');
@@ -173,6 +167,11 @@ function AddProductModal({ systemProducts, categories, userId, onClose, onAdded 
 
   async function handleSave() {
     if (!name.trim()) { setError('Product name is required.'); return; }
+    const trimmedReorder = reorderUrl.trim();
+    if (trimmedReorder && !trimmedReorder.startsWith('http://') && !trimmedReorder.startsWith('https://')) {
+      setError('Reorder link must start with http:// or https://');
+      return;
+    }
     setSaving(true);
     setError(null);
     const supabase = createClient();
@@ -182,6 +181,7 @@ function AddProductModal({ systemProducts, categories, userId, onClose, onAdded 
       name: name.trim(),
       brand: brand.trim() || null,
       product_url: productUrl.trim() || null,
+      reorder_url: trimmedReorder || null,
       product_category_id: finalCatId,
       container_size: containerSize !== '' ? Number(containerSize) : null,
       container_unit: containerUnit || null,
@@ -287,6 +287,14 @@ function AddProductModal({ systemProducts, categories, userId, onClose, onAdded 
             style={{ width: '100%', border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 12px', fontSize: '14px', background: '#ede8db', color: '#2b2823' }} />
         </div>
 
+        {/* Reorder link */}
+        <div>
+          <label style={{ display: 'block', fontSize: '10px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#a8a297', marginBottom: '6px' }}>Reorder link (optional)</label>
+          <input type="url" value={reorderUrl} onChange={e => setReorderUrl(e.target.value)}
+            placeholder="Paste a link to reorder this product"
+            style={{ width: '100%', border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 12px', fontSize: '14px', background: '#ede8db', color: '#2b2823' }} />
+        </div>
+
         {error && <p style={{ fontSize: '12px', color: '#c08a6e' }}>{error}</p>}
 
         <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
@@ -316,6 +324,7 @@ function ProductSlideOver({ product, categories, onClose, onUpdated, onRestock }
   const [name, setName] = useState(product.name);
   const [brand, setBrand] = useState(product.brand ?? '');
   const [productUrl, setProductUrl] = useState(product.product_url ?? '');
+  const [reorderUrl, setReorderUrl] = useState(product.reorder_url ?? '');
   const [containerSize, setContainerSize] = useState(product.container_size != null ? String(product.container_size) : '');
   const [containerUnit, setContainerUnit] = useState(product.container_unit ?? 'ml');
   const [remaining, setRemaining] = useState(product.remaining_amount != null ? String(product.remaining_amount) : '');
@@ -335,6 +344,11 @@ function ProductSlideOver({ product, categories, onClose, onUpdated, onRestock }
 
   async function handleSave() {
     if (!name.trim()) { setError('Name is required.'); return; }
+    const trimmedReorder = reorderUrl.trim();
+    if (trimmedReorder && !trimmedReorder.startsWith('http://') && !trimmedReorder.startsWith('https://')) {
+      setError('Reorder link must start with http:// or https://');
+      return;
+    }
     setSaving(true);
     setError(null);
     const supabase = createClient();
@@ -344,6 +358,7 @@ function ProductSlideOver({ product, categories, onClose, onUpdated, onRestock }
       name: name.trim(),
       brand: brand.trim() || null,
       product_url: productUrl.trim() || null,
+      reorder_url: trimmedReorder || null,
       product_category_id: finalCatId,
       container_size: containerSize !== '' ? Number(containerSize) : null,
       container_unit: containerUnit || null,
@@ -371,7 +386,11 @@ function ProductSlideOver({ product, categories, onClose, onUpdated, onRestock }
         {/* Status summary */}
         {pct != null && product.container_size != null && (
           <div style={{ padding: '16px 24px 0' }}>
-            <DepletionBar remainingAmount={product.remaining_amount ?? 0} totalAmount={product.container_size} unit={product.container_unit ?? undefined} showLabel />
+            <DepletionBar
+              remainingAmount={product.remaining_amount ?? 0}
+              totalAmount={product.container_size}
+              usesDisplay={usesRemainingFull(product)}
+            />
             {(expiry === 'expired' || expiry === 'soon') && product.expires_at && (
               <div style={{ marginTop: '6px' }}>
                 <span style={{ fontSize: '11px', background: 'rgba(192,138,110,0.12)', color: '#c08a6e', borderRadius: '100px', padding: '2px 8px', fontWeight: expiry === 'expired' ? 500 : 400 }}>
@@ -463,6 +482,14 @@ function ProductSlideOver({ product, categories, onClose, onUpdated, onRestock }
               style={{ width: '100%', border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 12px', fontSize: '14px', background: '#ede8db', color: '#2b2823' }} />
           </div>
 
+          {/* Reorder link */}
+          <div>
+            <label style={{ display: 'block', fontSize: '10px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#a8a297', marginBottom: '6px' }}>Reorder link (optional)</label>
+            <input type="url" value={reorderUrl} onChange={e => setReorderUrl(e.target.value)}
+              placeholder="Paste a link to reorder this product"
+              style={{ width: '100%', border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 12px', fontSize: '14px', background: '#ede8db', color: '#2b2823' }} />
+          </div>
+
           {error && <p style={{ fontSize: '12px', color: '#c08a6e' }}>{error}</p>}
         </div>
 
@@ -489,10 +516,11 @@ function ProductCard({ product, categories, onOpen, onRestock }: {
   const pct = pctRemaining(product);
   const expiry = expiryStatus(product);
   const chain = getCategoryChain(product.product_category_id, categories);
-  const usesRemaining = computeUsesLeft(product);
   const needsRestock = product.is_depleted || (pct != null && pct < 0.2);
   const catLabel = chain ? (chain.sub ? `${chain.top} · ${chain.sub}` : chain.top) : null;
   const dotColor = chain ? chain.dotColor : '#a8a297';
+  const usesDisplay = usesRemainingFull(product);
+  const hasTracking = product.remaining_amount != null && product.container_size != null && product.container_size > 0;
 
   return (
     <div
@@ -513,43 +541,45 @@ function ProductCard({ product, categories, onOpen, onRestock }: {
       )}
 
       {/* Depletion bar */}
-      {product.remaining_amount != null && product.container_size != null && product.container_size > 0 ? (
-        <div style={{ marginLeft: '16px', marginTop: product.brand ? 0 : '8px', marginBottom: '6px' }}>
+      {hasTracking ? (
+        <div style={{ marginLeft: '16px', marginTop: product.brand ? 0 : '8px', marginBottom: '4px' }}>
           <DepletionBar
-            remainingAmount={product.remaining_amount}
-            totalAmount={product.container_size}
-            unit={product.container_unit ?? undefined}
-            usesRemaining={usesRemaining}
-            showLabel
+            remainingAmount={product.remaining_amount!}
+            totalAmount={product.container_size!}
+            usesDisplay={usesDisplay}
           />
         </div>
       ) : product.is_depleted ? (
-        <p style={{ fontSize: '11px', color: '#c08a6e', fontWeight: 500, marginLeft: '16px', marginTop: '6px' }}>Out of stock</p>
+        <p style={{ fontSize: '11px', color: '#c08a6e', fontWeight: 500, marginLeft: '16px', marginTop: '6px', marginBottom: '4px' }}>Out of product</p>
       ) : null}
-
-      {/* Stats line: remaining amount */}
-      {product.remaining_amount != null && !product.is_depleted && product.container_size != null && (
-        <p style={{ fontSize: '12px', color: '#6b665e', marginLeft: '16px', marginBottom: '4px' }}>
-          {product.remaining_amount} {product.container_unit ?? ''} left
-        </p>
-      )}
 
       {/* Expiry pill */}
       {expiry && (
-        <div style={{ marginLeft: '16px', marginBottom: '4px' }}>
+        <div style={{ marginLeft: '16px', marginBottom: '6px' }}>
           <span style={{ fontSize: '11px', background: 'rgba(192,138,110,0.12)', color: '#c08a6e', borderRadius: '100px', padding: '1px 7px', fontWeight: expiry === 'expired' ? 500 : 400 }}>
             {expiry === 'expired' ? 'Expired' : product.expires_at ? `Exp. ${formatExpiry(product.expires_at)}` : ''}
           </span>
         </div>
       )}
 
-      {/* Restock button */}
+      {/* Action buttons — only when low or depleted */}
       {needsRestock && (
-        <div style={{ marginLeft: '16px', marginTop: '6px' }}>
+        <div style={{ marginLeft: '16px', marginTop: '4px', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+          {product.reorder_url && (
+            <a
+              href={product.reorder_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={e => e.stopPropagation()}
+              style={{ fontSize: '11px', color: '#6b665e', textDecoration: 'none', border: '1px solid #cdc6b6', borderRadius: '100px', padding: '3px 10px', cursor: 'pointer', lineHeight: 1, display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+            >
+              Reorder ↗
+            </a>
+          )}
           <button
             type="button"
             onClick={e => { e.stopPropagation(); onRestock(product); }}
-            style={{ border: '1px solid #2b2823', background: 'transparent', color: '#2b2823', fontSize: '11px', borderRadius: '100px', padding: '3px 10px', cursor: 'pointer', height: '24px', lineHeight: 1 }}
+            style={{ border: '1px solid #2b2823', background: 'transparent', color: '#2b2823', fontSize: '11px', borderRadius: '100px', padding: '3px 10px', cursor: 'pointer', lineHeight: 1 }}
           >
             Restock
           </button>

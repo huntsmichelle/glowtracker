@@ -3,9 +3,7 @@
 interface DepletionBarProps {
   remainingAmount: number;
   totalAmount: number;
-  unit?: string;
-  usesRemaining?: number | null;
-  showLabel?: boolean;
+  usesDisplay?: string; // e.g. "3 of 16 uses left" or "less than 1 use left"
   compact?: boolean;
 }
 
@@ -19,33 +17,27 @@ function fillColor(pct: number): { color: string; critical: boolean } {
 export default function DepletionBar({
   remainingAmount,
   totalAmount,
-  unit,
-  usesRemaining,
-  showLabel = true,
+  usesDisplay,
   compact = false,
 }: DepletionBarProps) {
   if (totalAmount <= 0) return null;
   const pct = Math.min(1, Math.max(0, remainingAmount / totalAmount));
   const { color, critical } = fillColor(pct);
   const h = compact ? 6 : 8;
+  const isWarning = usesDisplay?.startsWith('less than') || usesDisplay === 'out of product';
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-        <div style={{ flex: 1, height: `${h}px`, borderRadius: `${h / 2}px`, backgroundColor: '#cdc6b6', overflow: 'hidden' }}>
-          <div
-            className={critical ? 'depletion-critical' : undefined}
-            style={{ height: '100%', width: `${pct * 100}%`, borderRadius: `${h / 2}px`, backgroundColor: color, transition: 'width 0.3s ease' }}
-          />
-        </div>
-        {showLabel && (
-          <span style={{ fontSize: '11px', color: '#a8a297', fontVariantNumeric: 'tabular-nums', minWidth: '30px', textAlign: 'right' }}>
-            {Math.round(pct * 100)}%
-          </span>
-        )}
+      <div style={{ height: `${h}px`, borderRadius: `${h / 2}px`, backgroundColor: '#cdc6b6', overflow: 'hidden' }}>
+        <div
+          className={critical ? 'depletion-critical' : undefined}
+          style={{ height: '100%', width: `${pct * 100}%`, borderRadius: `${h / 2}px`, backgroundColor: color, transition: 'width 0.3s ease' }}
+        />
       </div>
-      {usesRemaining != null && (
-        <p style={{ fontSize: '11px', color: '#6b665e', marginTop: '3px' }}>≈ {usesRemaining} uses remaining</p>
+      {usesDisplay && (
+        <p style={{ fontSize: '11px', color: isWarning ? '#c08a6e' : '#6b665e', marginTop: '3px' }}>
+          {usesDisplay}
+        </p>
       )}
     </div>
   );

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { detectRoutineConflicts } from '@/lib/conflictDetection';
-import type { ConflictResolution, AdjustDirection, SkipTarget, DelayTarget, NoConflictOrder, ProximityResolution } from '@/types';
+import type { ConflictResolution, AdjustDirection, SkipTarget, DelayTarget, NoConflictOrder, ProximityResolution, LinkType } from '@/types';
 
 interface PairRuleState {
   pairId:            string | null;
@@ -12,6 +12,10 @@ interface PairRuleState {
   taskBId:           string;
   taskAName:         string;
   taskBName:         string;
+  // Relationship type
+  linkType:          LinkType;
+  occurrenceInterval: number;
+  primaryTaskId:     string; // 'a' or 'b' — resolved to actual ID on save
   // Overlap resolution
   defaultResolution: ConflictResolution;
   defaultDelayDays:  number;
@@ -111,6 +115,10 @@ export default function LinkRulesPanel({ routineId, userId, onRulesSaved }: Prop
             }
           }
 
+          // Determine primaryTaskId: 'a' or 'b' relative to this pair
+          const existingPrimaryId = existing?.primary_task_id ?? null;
+          const primaryTaskSide = existingPrimaryId === taskB.id ? 'b' : 'a';
+
           rules[key] = {
             pairId:            existing?.id ?? null,
             routineId,
@@ -118,6 +126,9 @@ export default function LinkRulesPanel({ routineId, userId, onRulesSaved }: Prop
             taskBId:           taskB.id,
             taskAName:         taskA.name,
             taskBName:         taskB.name,
+            linkType:          (existing?.link_type ?? 'conflict') as LinkType,
+            occurrenceInterval: existing?.occurrence_interval ?? 2,
+            primaryTaskId:     primaryTaskSide,
             defaultResolution: (existing?.default_resolution ?? 'ask') as ConflictResolution,
             defaultDelayDays:  existing?.default_delay_days ?? 7,
             delayTarget:       (existing?.delay_target      ?? 'b') as DelayTarget,
@@ -173,20 +184,27 @@ export default function LinkRulesPanel({ routineId, userId, onRulesSaved }: Prop
       user_id:            userId,
       task_a_id:          rule.taskAId,
       task_b_id:          rule.taskBId,
-      default_resolution: rule.defaultResolution,
-      default_delay_days: rule.defaultResolution === 'auto_adjust' ? rule.defaultDelayDays   : null,
-      delay_target:       rule.defaultResolution === 'auto_adjust' ? rule.delayTarget        : null,
-      adjust_direction:   rule.defaultResolution === 'auto_adjust' ? rule.adjustDirection    : null,
-      adjust_snap_back:   rule.defaultResolution === 'auto_adjust' ? rule.adjustSnapBack     : null,
-      skip_target:        rule.defaultResolution === 'skip_one'    ? rule.skipTarget         : null,
-      no_conflict_order:  rule.defaultResolution === 'no_conflict' ? rule.noConflictOrder    : null,
-      no_conflict_time_a: rule.defaultResolution === 'no_conflict' && rule.noConflictTimeA ? rule.noConflictTimeA : null,
-      no_conflict_time_b: rule.defaultResolution === 'no_conflict' && rule.noConflictTimeB ? rule.noConflictTimeB : null,
+      // Relationship type
+      link_type:          rule.linkType,
+      occurrence_interval: rule.linkType === 'every_n_occurrences' ? rule.occurrenceInterval : null,
+      primary_task_id:    rule.linkType === 'every_n_occurrences'
+        ? (rule.primaryTaskId === 'b' ? rule.taskBId : rule.taskAId)
+        : null,
+      // Overlap resolution (only relevant when link_type = 'conflict')
+      default_resolution: rule.linkType === 'conflict' ? rule.defaultResolution : 'no_conflict',
+      default_delay_days: rule.linkType === 'conflict' && rule.defaultResolution === 'auto_adjust' ? rule.defaultDelayDays   : null,
+      delay_target:       rule.linkType === 'conflict' && rule.defaultResolution === 'auto_adjust' ? rule.delayTarget        : null,
+      adjust_direction:   rule.linkType === 'conflict' && rule.defaultResolution === 'auto_adjust' ? rule.adjustDirection    : null,
+      adjust_snap_back:   rule.linkType === 'conflict' && rule.defaultResolution === 'auto_adjust' ? rule.adjustSnapBack     : null,
+      skip_target:        rule.linkType === 'conflict' && rule.defaultResolution === 'skip_one'    ? rule.skipTarget         : null,
+      no_conflict_order:  rule.linkType === 'conflict' && rule.defaultResolution === 'no_conflict' ? rule.noConflictOrder    : null,
+      no_conflict_time_a: rule.linkType === 'conflict' && rule.defaultResolution === 'no_conflict' && rule.noConflictTimeA ? rule.noConflictTimeA : null,
+      no_conflict_time_b: rule.linkType === 'conflict' && rule.defaultResolution === 'no_conflict' && rule.noConflictTimeB ? rule.noConflictTimeB : null,
       // Proximity / timing
-      proximity_enabled:    rule.proximityEnabled,
-      proximity_days:       rule.proximityEnabled ? rule.proximityDays       : null,
-      proximity_first_task: rule.proximityEnabled ? rule.proximityFirstTask  : null,
-      proximity_resolution: rule.proximityEnabled ? rule.proximityResolution : 'ask',
+      proximity_enabled:    rule.linkType === 'conflict' ? rule.proximityEnabled : false,
+      proximity_days:       rule.linkType === 'conflict' && rule.proximityEnabled ? rule.proximityDays       : null,
+      proximity_first_task: rule.linkType === 'conflict' && rule.proximityEnabled ? rule.proximityFirstTask  : null,
+      proximity_resolution: rule.linkType === 'conflict' && rule.proximityEnabled ? rule.proximityResolution : 'ask',
     }));
 
     const { data: savedPairs, error } = await supabase
@@ -257,7 +275,12 @@ export default function LinkRulesPanel({ routineId, userId, onRulesSaved }: Prop
         {keys.map(key => {
           const rule = pairRules[key];
           const isExpanded = expandedKeys.has(key);
-          const resLabel = RESOLUTION_OPTIONS.find(o => o.value === rule.defaultResolution)?.label ?? rule.defaultResolution;
+
+          // Summary label for the collapsed row
+          let summaryLabel: string;
+          if (rule.linkType === 'always_together') summaryLabel = 'Always together';
+          else if (rule.linkType === 'every_n_occurrences') summaryLabel = `Every ${rule.occurrenceInterval} occurrences`;
+          else summaryLabel = RESOLUTION_OPTIONS.find(o => o.value === rule.defaultResolution)?.label ?? rule.defaultResolution;
 
           return (
             <div key={key} className="bg-stone border border-glow-border rounded-lg overflow-hidden">
@@ -270,28 +293,89 @@ export default function LinkRulesPanel({ routineId, userId, onRulesSaved }: Prop
                   <p className="text-sm font-medium text-charcoal truncate">
                     {rule.taskAName} <span className="text-warm-light font-normal">vs</span> {rule.taskBName}
                   </p>
-                  <p className="text-xs text-warm-light mt-0.5">{resLabel}</p>
+                  <p className="text-xs text-warm-light mt-0.5">{summaryLabel}</p>
                 </div>
                 <span className="text-xs text-warm-light flex-shrink-0 ml-3">{isExpanded ? '▲' : '▼'}</span>
               </button>
 
               {isExpanded && (
-                <div className="px-4 pb-4 border-t border-glow-border pt-3 space-y-3">
-                  <div className="flex gap-1.5 flex-wrap">
-                    {RESOLUTION_OPTIONS.map(opt => (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        title={TOOLTIPS[opt.value]}
-                        onClick={() => update(key, { defaultResolution: opt.value })}
-                        className={`text-xs px-2.5 py-1.5 rounded-pill border transition-colors ${
-                          rule.defaultResolution === opt.value
-                            ? 'border-charcoal bg-charcoal text-cream font-medium'
-                            : 'border-glow-border text-warm-mid hover:border-warm-light'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
+                <div className="px-4 pb-4 border-t border-glow-border pt-3 space-y-4">
+
+                  {/* ── Relationship type selector ── */}
+                  <div>
+                    <p className="text-xs text-warm-mid mb-2">Relationship type</p>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {([
+                        { value: 'conflict',            label: 'Overlap rule' },
+                        { value: 'always_together',     label: 'Always together' },
+                        { value: 'every_n_occurrences', label: 'Every N occurrences' },
+                      ] as { value: LinkType; label: string }[]).map(opt => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => update(key, { linkType: opt.value })}
+                          className={`text-xs px-2.5 py-1.5 rounded-pill border transition-colors ${
+                            rule.linkType === opt.value
+                              ? 'border-charcoal bg-charcoal text-cream font-medium'
+                              : 'border-glow-border text-warm-mid hover:border-warm-light'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* ── Always Together description ── */}
+                  {rule.linkType === 'always_together' && (
+                    <div className="pl-3 border-l-2 border-glow-border">
+                      <p className="text-xs text-warm-light">
+                        <strong className="text-warm-mid">{rule.taskAName}</strong> and <strong className="text-warm-mid">{rule.taskBName}</strong> will always be scheduled on the same date. No overlap alerts will fire for this pair.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* ── Every N Occurrences ── */}
+                  {rule.linkType === 'every_n_occurrences' && (
+                    <div className="pl-3 border-l-2 border-glow-border space-y-2.5">
+                      <div>
+                        <p className="text-xs text-warm-mid mb-1">Primary ritual (anchor)</p>
+                        <div className="flex gap-2">
+                          <button type="button" onClick={() => update(key, { primaryTaskId: 'a' })} className={chipClass(rule.primaryTaskId === 'a')}>{rule.taskAName}</button>
+                          <button type="button" onClick={() => update(key, { primaryTaskId: 'b' })} className={chipClass(rule.primaryTaskId === 'b')}>{rule.taskBName}</button>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-warm-mid">Paired ritual fires every</span>
+                        <input
+                          type="number" min={2} max={12}
+                          value={rule.occurrenceInterval}
+                          onChange={e => update(key, { occurrenceInterval: Math.max(2, Number(e.target.value)) })}
+                          className="w-14 text-center"
+                        />
+                        <span className="text-xs text-warm-mid">occurrences of {rule.primaryTaskId === 'b' ? rule.taskBName : rule.taskAName}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── Overlap rule options (only when linkType = 'conflict') ── */}
+                  {rule.linkType === 'conflict' && (
+                    <div className="space-y-3">
+                      <div className="flex gap-1.5 flex-wrap">
+                        {RESOLUTION_OPTIONS.map(opt => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            title={TOOLTIPS[opt.value]}
+                            onClick={() => update(key, { defaultResolution: opt.value })}
+                            className={`text-xs px-2.5 py-1.5 rounded-pill border transition-colors ${
+                              rule.defaultResolution === opt.value
+                                ? 'border-charcoal bg-charcoal text-cream font-medium'
+                                : 'border-glow-border text-warm-mid hover:border-warm-light'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
                     ))}
                   </div>
 
@@ -356,6 +440,8 @@ export default function LinkRulesPanel({ routineId, userId, onRulesSaved }: Prop
                           <input type="time" value={rule.noConflictTimeB} onChange={e => update(key, { noConflictTimeB: e.target.value })} className="w-full" />
                         </div>
                       </div>
+                    </div>
+                  )}
                     </div>
                   )}
                 </div>

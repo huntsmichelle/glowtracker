@@ -41,6 +41,8 @@ export async function detectRoutineConflicts(routineId: string): Promise<void> {
   const sixMonthsOut = toISODate(addDays(today(), 182));
 
   for (const pair of pairs as RoutineTaskPair[]) {
+    // always_together pairs are by design — no conflict detection needed
+    if (pair.link_type === 'always_together') continue;
     await detectPairConflicts(pair, routineId, routine.user_id, todayStr, sixMonthsOut, isIndependent);
   }
 }

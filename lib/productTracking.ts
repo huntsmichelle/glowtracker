@@ -1,6 +1,46 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Product, TaskProduct } from '@/types';
 
+// ── Display helpers (uses-remaining, no taskProduct needed) ───
+
+function computeDefaultUseAmount(product: Product): number | null {
+  if (
+    product.container_size && product.uses_per_supply_unit &&
+    product.uses_per_supply_unit > 0
+  ) {
+    return product.container_size / product.uses_per_supply_unit;
+  }
+  return null;
+}
+
+export function productUsesRemainingRaw(product: Product, useAmountOverride?: number): number {
+  const perUse = useAmountOverride ?? computeDefaultUseAmount(product);
+  if (!product.remaining_amount || !perUse || perUse <= 0) return 0;
+  return product.remaining_amount / perUse;
+}
+
+export function usesRemainingDisplay(product: Product, useAmountOverride?: number): string {
+  if (product.is_depleted) return 'out';
+  const uses = productUsesRemainingRaw(product, useAmountOverride);
+  if (uses <= 0) return 'out';
+  if (uses < 1) return 'less than 1 use';
+  const rounded = Math.floor(uses);
+  return `${rounded} ${rounded === 1 ? 'use' : 'uses'} left`;
+}
+
+export function usesRemainingFull(product: Product, useAmountOverride?: number): string {
+  if (product.is_depleted) return 'out of product';
+  const perUse = useAmountOverride ?? computeDefaultUseAmount(product);
+  const uses = productUsesRemainingRaw(product, useAmountOverride);
+  const total = product.container_size && perUse ? Math.floor(product.container_size / perUse) : null;
+
+  if (uses <= 0) return 'out of product';
+  if (uses < 1) return 'less than 1 use left';
+  const rounded = Math.floor(uses);
+  if (total) return `${rounded} of ${total} uses left`;
+  return `${rounded} ${rounded === 1 ? 'use' : 'uses'} left`;
+}
+
 // ── Helpers ───────────────────────────────────────────────────
 
 /**

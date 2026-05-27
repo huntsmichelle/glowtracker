@@ -18,7 +18,7 @@ import type { InstanceWithTask, Task, Product, ProductCategory } from '@/types';
 import { getCategoryColor } from '@/lib/categoryColors';
 import { detectRoutineConflicts } from '@/lib/conflictDetection';
 import { getTaskSuggestions, dismissSuggestion, type Suggestion } from '@/lib/suggestions';
-import { processInstanceKept } from '@/lib/productTracking';
+import { processInstanceKept, usesRemainingDisplay } from '@/lib/productTracking';
 import DepletionBar from '@/components/DepletionBar';
 import SpendBar from '@/components/SpendBar';
 import type { ProductAlert } from '@/types';
@@ -1869,12 +1869,13 @@ export default function DashboardClient({
                         ? Math.min(1, Math.max(0, p.remaining_amount / p.container_size)) : null;
                       const needsRestock = p.is_depleted || (pct != null && pct < 0.2);
                       const dotColor = getDotColor(p);
+                      const usesText = usesRemainingDisplay(p);
+                      const isWarning = usesText.startsWith('less than') || usesText === 'out';
 
                       // Inline bar fill color
                       let barFill = '#2b2823';
                       if (pct != null) {
-                        if (pct <= 0.1) barFill = '#c08a6e';
-                        else if (pct <= 0.3) barFill = '#c08a6e';
+                        if (pct <= 0.3) barFill = '#c08a6e';
                         else if (pct <= 0.6) barFill = '#d4a478';
                       }
                       if (p.is_depleted) barFill = '#c08a6e';
@@ -1888,23 +1889,28 @@ export default function DashboardClient({
                           <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: dotColor, flexShrink: 0 }} />
                           {/* Name */}
                           <span style={{ flex: 1, fontSize: '13px', color: '#2b2823', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{p.name}</span>
-                          {/* Inline bar + pct */}
+                          {/* Inline bar + uses text */}
                           {pct != null ? (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
-                              <div style={{ width: '60px', height: '6px', borderRadius: '3px', backgroundColor: '#cdc6b6', overflow: 'hidden', flexShrink: 0 }}>
+                              <div style={{ width: '52px', height: '6px', borderRadius: '3px', backgroundColor: '#cdc6b6', overflow: 'hidden', flexShrink: 0 }}>
                                 <div style={{ height: '100%', width: `${pct * 100}%`, borderRadius: '3px', backgroundColor: barFill }} />
                               </div>
-                              <span style={{ fontSize: '11px', color: '#a8a297', fontVariantNumeric: 'tabular-nums', minWidth: '28px', textAlign: 'right' }}>
-                                {Math.round(pct * 100)}%
+                              <span style={{ fontSize: '11px', color: isWarning ? '#c08a6e' : '#a8a297', minWidth: '60px', textAlign: 'left' }}>
+                                {usesText}
                               </span>
                             </div>
                           ) : p.is_depleted ? (
-                            <span style={{ fontSize: '11px', color: '#c08a6e', flexShrink: 0 }}>Out</span>
+                            <span style={{ fontSize: '11px', color: '#c08a6e', flexShrink: 0 }}>out</span>
                           ) : null}
-                          {/* Restock link */}
-                          {needsRestock && (
+                          {/* Reorder link or Restock */}
+                          {needsRestock && p.reorder_url ? (
+                            <a href={p.reorder_url} target="_blank" rel="noopener noreferrer"
+                              style={{ fontSize: '11px', color: '#6b665e', flexShrink: 0, textDecoration: 'none' }}>
+                              Reorder ↗
+                            </a>
+                          ) : needsRestock ? (
                             <Link href="/shelf" style={{ fontSize: '11px', color: '#c08a6e', flexShrink: 0 }}>Restock</Link>
-                          )}
+                          ) : null}
                         </div>
                       );
                     })}
