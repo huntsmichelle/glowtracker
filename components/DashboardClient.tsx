@@ -1930,13 +1930,13 @@ export default function DashboardClient({
                   </Link>
                 </div>
 
-                {/* Category filter pills */}
-                {topCats.length > 1 && (
-                  <div style={{ padding: '8px 20px 0', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                {/* Category filter pills — always show when any products have categories */}
+                {topCats.length > 0 && (
+                  <div style={{ padding: '8px 20px 4px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                     <button
                       onClick={() => setShelfCatFilter(null)}
                       style={{
-                        fontSize: '10px', letterSpacing: '0.10em', textTransform: 'uppercase', padding: '3px 10px',
+                        fontSize: '11px', fontWeight: 500, padding: '3px 10px',
                         borderRadius: '100px', border: '1px solid',
                         borderColor: shelfCatFilter === null ? '#2b2823' : '#cdc6b6',
                         background: shelfCatFilter === null ? '#2b2823' : 'transparent',
@@ -1949,9 +1949,9 @@ export default function DashboardClient({
                     {topCats.map(tc => (
                       <button
                         key={tc.id}
-                        onClick={() => setShelfCatFilter(shelfCatFilter === tc.id ? null : tc.id)}
+                        onClick={() => setShelfCatFilter(tc.id === shelfCatFilter ? null : tc.id)}
                         style={{
-                          fontSize: '10px', letterSpacing: '0.10em', textTransform: 'uppercase', padding: '3px 10px',
+                          fontSize: '11px', padding: '3px 10px',
                           borderRadius: '100px', border: '1px solid',
                           borderColor: shelfCatFilter === tc.id ? '#2b2823' : '#cdc6b6',
                           background: shelfCatFilter === tc.id ? '#2b2823' : 'transparent',

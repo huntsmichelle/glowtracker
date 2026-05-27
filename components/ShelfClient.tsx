@@ -301,10 +301,10 @@ function AddProductModal({ systemProducts, categories, userId, onClose, onAdded 
         </div>
 
         {/* Total size + Amount per use */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', alignItems: 'end' }}>
-          <div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', alignItems: 'end', overflow: 'hidden' }}>
+          <div style={{ minWidth: 0 }}>
             <label style={labelStyle}>Total size</label>
-            <div style={{ display: 'flex', gap: '6px' }}>
+            <div style={{ display: 'flex', gap: '6px', overflow: 'hidden' }}>
               <input
                 type="number"
                 min={0}
@@ -312,20 +312,20 @@ function AddProductModal({ systemProducts, categories, userId, onClose, onAdded 
                 onChange={e => setContainerSize(e.target.value)}
                 onBlur={() => recalc(containerSize, amountPerUse)}
                 placeholder="e.g. 32"
-                style={{ flex: 1, border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 10px', fontSize: '14px', background: '#ede8db', color: '#2b2823' }}
+                style={{ flex: 1, minWidth: 0, boxSizing: 'border-box', border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 10px', fontSize: '14px', background: '#ede8db', color: '#2b2823' }}
               />
               <select
                 value={containerUnit}
                 onChange={e => setContainerUnit(e.target.value)}
-                style={{ width: '64px', border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 6px', fontSize: '12px', background: '#ede8db', color: '#2b2823' }}
+                style={{ flexShrink: 0, width: '60px', border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 4px', fontSize: '12px', background: '#ede8db', color: '#2b2823' }}
               >
                 {['oz', 'fl oz', 'ml', 'g'].map(u => <option key={u} value={u}>{u}</option>)}
               </select>
             </div>
           </div>
-          <div>
+          <div style={{ minWidth: 0 }}>
             <label style={labelStyle}>Amount per use</label>
-            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', overflow: 'hidden' }}>
               <input
                 type="number"
                 min={0}
@@ -333,9 +333,9 @@ function AddProductModal({ systemProducts, categories, userId, onClose, onAdded 
                 onChange={e => setAmountPerUse(e.target.value)}
                 onBlur={() => recalc(containerSize, amountPerUse)}
                 placeholder="e.g. 2"
-                style={{ flex: 1, border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 10px', fontSize: '14px', background: '#ede8db', color: '#2b2823' }}
+                style={{ flex: 1, minWidth: 0, boxSizing: 'border-box', border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 10px', fontSize: '14px', background: '#ede8db', color: '#2b2823' }}
               />
-              <span style={{ fontSize: '12px', color: '#a8a297', whiteSpace: 'nowrap', minWidth: '48px' }}>{containerUnit} / use</span>
+              <span style={{ flexShrink: 0, fontSize: '12px', color: '#a8a297', whiteSpace: 'nowrap' }}>{containerUnit}/use</span>
             </div>
           </div>
         </div>
@@ -515,7 +515,7 @@ function ProductSlideOver({ product, categories, onClose, onUpdated, onRestock }
       {/* Backdrop */}
       <div style={{ position: 'fixed', inset: 0, background: 'rgba(43,40,35,0.25)', zIndex: 40 }} onClick={onClose} />
       {/* Panel */}
-      <div style={{ position: 'fixed', right: 0, top: 0, bottom: 0, width: 'min(480px, 90vw)', background: '#f6f1e6', zIndex: 50, boxShadow: '-4px 0 24px rgba(43,40,35,0.12)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+      <div style={{ position: 'fixed', right: 0, top: 0, bottom: 0, width: 'min(480px, 90vw)', boxSizing: 'border-box', background: '#f6f1e6', zIndex: 50, boxShadow: '-4px 0 24px rgba(43,40,35,0.12)', display: 'flex', flexDirection: 'column', overflowY: 'auto', overflowX: 'hidden' }}>
         {/* Header — sticky */}
         <div style={{ position: 'sticky', top: 0, padding: '20px 24px 16px', borderBottom: '1px solid #cdc6b6', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, background: '#f6f1e6', zIndex: 1 }}>
           <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontStyle: 'italic', fontSize: '20px', color: '#2b2823' }}>{product.name}</p>
@@ -591,39 +591,39 @@ function ProductSlideOver({ product, categories, onClose, onUpdated, onRestock }
           {/* Quantity fields */}
           <div>
             <label style={labelStyle}>Quantity</label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', alignItems: 'end' }}>
-              <div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', alignItems: 'end', overflow: 'hidden' }}>
+              <div style={{ minWidth: 0 }}>
                 <p style={subLabelStyle}>Total size</p>
-                <div style={{ display: 'flex', gap: '4px' }}>
+                <div style={{ display: 'flex', gap: '4px', overflow: 'hidden' }}>
                   <input
                     type="number" min={0}
                     value={containerSize}
                     onChange={e => setContainerSize(e.target.value)}
                     onBlur={() => recalc(containerSize, amountPerUse)}
                     placeholder="e.g. 32"
-                    style={{ flex: 1, border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 10px', fontSize: '14px', background: '#ede8db', color: '#2b2823' }}
+                    style={{ flex: 1, minWidth: 0, boxSizing: 'border-box', border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 10px', fontSize: '14px', background: '#ede8db', color: '#2b2823' }}
                   />
                   <select
                     value={containerUnit}
                     onChange={e => setContainerUnit(e.target.value)}
-                    style={{ width: '60px', border: '1px solid #cdc6b6', borderRadius: '8px', padding: '6px', fontSize: '12px', background: '#ede8db', color: '#2b2823' }}
+                    style={{ flexShrink: 0, width: '60px', border: '1px solid #cdc6b6', borderRadius: '8px', padding: '6px 4px', fontSize: '12px', background: '#ede8db', color: '#2b2823' }}
                   >
                     {['oz', 'fl oz', 'ml', 'g', 'kit', 'strips'].map(u => <option key={u} value={u}>{u}</option>)}
                   </select>
                 </div>
               </div>
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <p style={subLabelStyle}>Amount per use</p>
-                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', overflow: 'hidden' }}>
                   <input
                     type="number" min={0}
                     value={amountPerUse}
                     onChange={e => setAmountPerUse(e.target.value)}
                     onBlur={() => recalc(containerSize, amountPerUse)}
                     placeholder="e.g. 2"
-                    style={{ flex: 1, border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 10px', fontSize: '14px', background: '#ede8db', color: '#2b2823' }}
+                    style={{ flex: 1, minWidth: 0, boxSizing: 'border-box', border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 10px', fontSize: '14px', background: '#ede8db', color: '#2b2823' }}
                   />
-                  <span style={{ fontSize: '12px', color: '#a8a297', whiteSpace: 'nowrap' }}>{containerUnit} / use</span>
+                  <span style={{ flexShrink: 0, fontSize: '12px', color: '#a8a297', whiteSpace: 'nowrap' }}>{containerUnit}/use</span>
                 </div>
               </div>
             </div>
