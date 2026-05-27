@@ -34,7 +34,7 @@ const statusLabels: Record<string, string> = {
   due:       'Ready for Refresh',
   completed: 'Kept',
   skipped:   'Passed',
-  snoozed:   'Nudged',
+  snoozed:   'Deferred',
 };
 
 export default function InstanceDetailClient({ instance: initial }: Props) {
@@ -210,7 +210,7 @@ export default function InstanceDetailClient({ instance: initial }: Props) {
           )}
           {instance.snooze_until && (
             <div className="flex justify-between">
-              <span className="text-warm-light">Nudged until</span>
+              <span className="text-warm-light">Deferred until</span>
               <span>{format(parseISO(instance.snooze_until), 'MMM d, yyyy')}</span>
             </div>
           )}
@@ -253,7 +253,7 @@ export default function InstanceDetailClient({ instance: initial }: Props) {
                   onClick={() => setShowSnoozeForm(true)}
                   className="flex-1 bg-taupe hover:bg-glow-border text-warm-mid text-sm font-medium rounded-pill py-3 transition-colors"
                 >
-                  Nudge
+                  Defer
                 </button>
               </div>
               {!instance.is_event_override && !isCountdown && (
@@ -312,9 +312,9 @@ export default function InstanceDetailClient({ instance: initial }: Props) {
           {/* Snooze form */}
           {showSnoozeForm && (
             <div className="bg-stone border border-glow-border rounded-lg shadow-card p-5 space-y-4">
-              <p className="label-overline">Nudge</p>
+              <p className="label-overline">Defer</p>
               <div>
-                <label className="block text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide">Days to nudge</label>
+                <label className="block text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide">Days to defer</label>
                 <input
                   type="number" min={1} max={30} value={snoozeDays}
                   onChange={e => setSnoozeDays(Number(e.target.value))}
@@ -324,7 +324,7 @@ export default function InstanceDetailClient({ instance: initial }: Props) {
               <div className="flex gap-2">
                 <button onClick={() => setShowSnoozeForm(false)} className="flex-1 border border-glow-border text-warm-mid text-sm rounded-pill py-2 hover:bg-taupe transition-colors">Cancel</button>
                 <button onClick={handleSnooze} disabled={loading} className="flex-1 bg-charcoal text-cream text-sm font-medium rounded-pill py-2 disabled:opacity-50">
-                  {loading ? 'Saving…' : 'Nudge'}
+                  {loading ? 'Saving…' : 'Defer'}
                 </button>
               </div>
             </div>

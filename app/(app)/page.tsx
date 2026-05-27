@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import DashboardClient from '@/components/DashboardClient';
 import type { InstanceWithTask } from '@/types';
 import { format, subDays } from 'date-fns';
+import { autoCompleteInstances } from '@/lib/autoComplete';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +12,9 @@ export default async function DashboardPage() {
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) redirect('/login');
+
+  // Run autocomplete before fetching so auto-kept instances are already removed from the list
+  await autoCompleteInstances(supabase);
 
   const todayStr = format(new Date(), 'yyyy-MM-dd');
   const cutoff84 = format(subDays(new Date(), 84), 'yyyy-MM-dd');

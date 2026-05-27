@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import type { Routine } from '@/types';
+import TemplateGallery, { type TemplateItem } from '@/components/TemplateGallery';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,13 +26,18 @@ export default async function RoutinesListPage() {
 
   const routineIds = (routinesList ?? []).map(r => r.id);
 
-  const [taskCountsRes, conflictCountsRes] = await Promise.all([
+  const [taskCountsRes, conflictCountsRes, systemTemplatesRes] = await Promise.all([
     routineIds.length
       ? supabase.from('tasks').select('routine_id').in('routine_id', routineIds).eq('is_active', true)
       : Promise.resolve({ data: [] }),
     routineIds.length
       ? supabase.from('routine_conflicts').select('routine_id').in('routine_id', routineIds).eq('status', 'pending')
       : Promise.resolve({ data: [] }),
+    supabase
+      .from('routines')
+      .select('id, name, template_description, template_task_count, template_category, color')
+      .eq('is_system_template', true)
+      .order('name'),
   ]);
 
   const taskCounts: Record<string, number> = {};
@@ -50,6 +56,8 @@ export default async function RoutinesListPage() {
     pending_conflicts: conflictCounts[r.id] ?? 0,
   }));
 
+  const systemTemplates = (systemTemplatesRes.data ?? []) as TemplateItem[];
+
   return (
     <div className="max-w-2xl mx-auto px-5 py-8 space-y-8">
       {/* Header */}
@@ -57,62 +65,51 @@ export default async function RoutinesListPage() {
         <div>
           <p className="label-overline mb-1">Collections</p>
           <h1 className="font-display text-3xl text-charcoal">Routines</h1>
-          {routines.length > 0 && (
-            <p className="text-warm-mid text-sm mt-1">{routines.length} routine{routines.length !== 1 ? 's' : ''} configured</p>
-          )}
+          <p className="text-warm-mid text-sm mt-0.5">Your groups and templates.</p>
         </div>
         <Link
           href="/routines/new"
-          className="bg-charcoal text-cream text-sm font-medium rounded-pill px-5 py-2.5 hover:bg-charcoal/90"
+          style={{ border: '1px solid #2b2823', backgroundColor: 'transparent', color: '#2b2823', fontSize: '13px', fontWeight: 500, borderRadius: '100px', padding: '7px 20px', textDecoration: 'none' }}
         >
           + New
         </Link>
       </div>
 
       {routines.length === 0 ? (
-        <div className="text-center py-20">
-          <div className="w-10 h-10 mx-auto mb-4 text-warm-light">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
-              <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
-            </svg>
-          </div>
-          <h2 className="font-display text-2xl text-charcoal mb-2">No routines yet.</h2>
-          <p className="text-warm-mid text-sm mb-8">Group related rituals to track overlaps and patterns.</p>
-          <div className="flex flex-col items-center gap-3">
-            <Link
-              href="/routines/new"
-              className="inline-block bg-charcoal text-cream text-sm font-medium rounded-pill px-6 py-3 hover:bg-charcoal/90"
-            >
-              Create your first routine
-            </Link>
-            <Link href="/routines/templates" className="text-sm text-warm-mid hover:text-charcoal underline-offset-2 hover:underline">
-              Browse templates
-            </Link>
-          </div>
+        <div className="flex flex-col items-center justify-center py-12 gap-3">
+          <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontStyle: 'italic', fontSize: '22px', color: '#2b2823' }}>
+            No routines yet.
+          </p>
+          <div style={{ width: '40px', height: '1px', backgroundColor: '#cdc6b6' }} />
+          <Link href="/routines/templates" style={{ fontSize: '10px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#a8a297', cursor: 'pointer' }}>
+            Browse the template library
+          </Link>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div style={{ borderTop: '1px solid #cdc6b6' }}>
           {routines.map(r => (
             <Link
               key={r.id}
               href={`/routines/${r.id}`}
-              className="flex items-center justify-between bg-stone border border-glow-border rounded-lg shadow-card px-4 py-4 card-lift"
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 0', borderBottom: '1px solid #cdc6b6', cursor: 'pointer' }}
             >
-              <div className="flex items-center gap-3 min-w-0">
-                <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: r.color }} />
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-charcoal truncate">{r.name}</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                <span style={{ width: '10px', height: '10px', borderRadius: '50%', flexShrink: 0, backgroundColor: r.color }} />
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ fontSize: '14px', fontWeight: 500, color: '#2b2823', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</p>
                   {r.description && (
-                    <p className="text-xs text-warm-mid truncate mt-0.5">{r.description}</p>
+                    <p style={{ fontSize: '12px', color: '#6b665e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: '1px' }}>{r.description}</p>
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, marginLeft: '12px' }}>
                 {r.pending_conflicts > 0 && r.conflict_intent !== 'independent' && (
                   <span
-                    className="text-[11px] font-medium rounded-pill px-2 py-0.5"
                     style={{
+                      fontSize: '11px',
+                      fontWeight: 500,
+                      borderRadius: '100px',
+                      padding: '2px 8px',
                       backgroundColor: 'rgba(192,138,110,0.12)',
                       border: '1px solid #c08a6e',
                       color: '#2b2823',
@@ -121,7 +118,7 @@ export default async function RoutinesListPage() {
                     {r.pending_conflicts} overlap{r.pending_conflicts !== 1 ? 's' : ''}
                   </span>
                 )}
-                <span className="text-xs text-warm-light">
+                <span style={{ fontSize: '12px', color: '#a8a297' }}>
                   {r.task_count} ritual{r.task_count !== 1 ? 's' : ''}
                 </span>
               </div>
@@ -130,10 +127,14 @@ export default async function RoutinesListPage() {
         </div>
       )}
 
+      {/* Inspiration — category tile grid */}
+      <TemplateGallery templates={systemTemplates} userId={user.id} />
+
       {routines.length > 0 && (
-        <div className="pt-2 border-t border-glow-border">
-          <Link href="/routines/templates" className="text-sm text-warm-mid hover:text-charcoal underline-offset-2 hover:underline">
-            Browse templates →
+        <div style={{ paddingTop: '8px', borderTop: '1px solid #cdc6b6' }}>
+          <Link href="/routines/templates" style={{ fontSize: '13px', color: '#6b665e', cursor: 'pointer' }}
+            className="hover:text-charcoal">
+            Browse the template library →
           </Link>
         </div>
       )}

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import ClockPicker from '@/components/ClockPicker';
 import { format, parseISO, isBefore } from 'date-fns';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -10,6 +11,7 @@ import {
   calculateCountdownWindows,
 } from '@/lib/instanceEngine';
 import { getCommonTasks, fuzzyMatchCommonTask, type CommonTask } from '@/lib/suggestions';
+import { formatUSPhone, stripPhoneFormatting } from '@/lib/costCalculations';
 import type {
   Category,
   Task,
@@ -50,8 +52,152 @@ const COLOR_SWATCHES = [
 ];
 
 function emptyProduct(): ProductFormEntry {
-  return { name: '', description: '', product_url: '', track_usage: false, uses_per_supply_unit: '' };
+  return {
+    name: '',
+    description: '',
+    product_url: '',
+    track_usage: false,
+    uses_per_supply_unit: '',
+    purchase_price: '',
+    uses_per_container: '',
+  };
 }
+
+// ─── Toggle switch ────────────────────────────────────────────────────────────
+
+function ToggleSwitch({
+  checked,
+  onChange,
+  disabled = false,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => !disabled && onChange(!checked)}
+      style={{
+        position: 'relative',
+        flexShrink: 0,
+        width: '44px',
+        height: '24px',
+        borderRadius: '12px',
+        overflow: 'hidden',
+        backgroundColor: checked ? '#2b2823' : '#cdc6b6',
+        transition: 'background-color 0.2s ease',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.4 : 1,
+        border: 'none',
+        padding: 0,
+      }}
+    >
+      <span
+        style={{
+          position: 'absolute',
+          width: '20px',
+          height: '20px',
+          borderRadius: '50%',
+          backgroundColor: 'white',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+          top: '2px',
+          left: checked ? '22px' : '2px',
+          transition: 'left 0.2s ease',
+        }}
+      />
+    </button>
+  );
+}
+
+// ─── Section wrapper ──────────────────────────────────────────────────────────
+
+function Section({
+  title,
+  subtitle,
+  isOpen,
+  onToggle,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  isOpen: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="border border-glow-border rounded-lg overflow-hidden">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full flex items-start justify-between px-5 py-4 text-left hover:bg-taupe transition-colors"
+      >
+        <div>
+          <p className="label-overline">{title}</p>
+          <p className="text-xs text-warm-light mt-0.5">{subtitle}</p>
+        </div>
+        <span className="text-warm-light text-lg leading-none mt-0.5 flex-shrink-0 ml-3">
+          {isOpen ? '−' : '+'}
+        </span>
+      </button>
+      {isOpen && (
+        <div className="px-5 pb-5 border-t border-glow-border space-y-4 pt-4">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Dollar input helper ──────────────────────────────────────────────────────
+
+function DollarInput({
+  value,
+  onChange,
+  placeholder = '0.00',
+  label,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  label?: string;
+}) {
+  return (
+    <div>
+      {label && (
+        <label className="block text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide">
+          {label}
+        </label>
+      )}
+      <div className="flex items-center gap-1.5 border border-glow-border rounded-md bg-stone px-3 py-2 focus-within:ring-1 focus-within:ring-charcoal">
+        <span className="text-warm-mid text-sm flex-shrink-0">$</span>
+        <input
+          type="number"
+          min={0}
+          step="0.01"
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="flex-1 bg-transparent border-none outline-none text-sm text-charcoal placeholder:text-warm-light p-0"
+        />
+      </div>
+    </div>
+  );
+}
+
+// ─── Sub-overline label ───────────────────────────────────────────────────────
+
+function SubOverline({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-[10px] font-semibold text-warm-light uppercase tracking-widest mb-3 mt-1">
+      {children}
+    </p>
+  );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
 
 export default function TaskForm({
   categories: initialCategories,
@@ -61,8 +207,8 @@ export default function TaskForm({
   initialServiceProvider,
   userId,
 }: Props) {
-  const router  = useRouter();
-  const isEdit  = !!taskId;
+  const router = useRouter();
+  const isEdit = !!taskId;
 
   const [step, setStep] = useState<Step>(isEdit ? 'details' : 'mode-choice');
   const [mode, setMode] = useState<TaskMode>(initialValues?.mode ?? 'standard');
@@ -70,17 +216,15 @@ export default function TaskForm({
   const [anchorType, setAnchorType] = useState<'today' | 'past'>('today');
   const [anchorDate, setAnchorDate] = useState(initialValues?.initial_anchor_date ?? '');
 
+  // ── Section 1: Core Details ──
   const [name, setName]               = useState(initialValues?.name ?? '');
   const [categoryId, setCategoryId]   = useState(initialValues?.category_id ?? '');
   const [description, setDescription] = useState(initialValues?.description ?? '');
-  const [reminderDays, setReminderDays]     = useState(initialValues?.default_reminder_days ?? 2);
-  const [defaultCost, setDefaultCost]       = useState(initialValues?.default_cost ?? '');
-  const [reminderNotes, setReminderNotes]   = useState(initialValues?.reminder_notes ?? '');
 
+  // ── Section 2: Frequency ──
   const [frequencyType, setFrequencyType] = useState<FrequencyType>(
     initialValues?.frequencyType ?? 'interval'
   );
-
   const [intervalType, setIntervalType] = useState<IntervalType>(
     initialValues?.intervalType ?? 'range'
   );
@@ -89,18 +233,60 @@ export default function TaskForm({
   const [intervalUnit, setIntervalUnit] = useState<IntervalUnit>(
     initialValues?.intervalUnit ?? 'weeks'
   );
-
   const [slotALabel, setSlotALabel] = useState(initialValues?.slotALabel ?? 'Morning');
   const [slotATime,  setSlotATime]  = useState(initialValues?.slotATime  ?? '');
   const [slotBLabel, setSlotBLabel] = useState(initialValues?.slotBLabel ?? 'Evening');
   const [slotBTime,  setSlotBTime]  = useState(initialValues?.slotBTime  ?? '');
-
-  const [scheduledTime,    setScheduledTime]    = useState(initialValues?.scheduledTime    ?? '');
-  const [timeOfDayLabel,   setTimeOfDayLabel]   = useState(initialValues?.timeOfDayLabel   ?? '');
-  const [showTimeOfDay,    setShowTimeOfDay]     = useState(
+  const [scheduledTime,  setScheduledTime]  = useState(initialValues?.scheduledTime  ?? '');
+  const [timeOfDayLabel, setTimeOfDayLabel] = useState(initialValues?.timeOfDayLabel ?? '');
+  const [showTimeOfDay,  setShowTimeOfDay]  = useState(
     !!(initialValues?.scheduledTime || initialValues?.timeOfDayLabel)
   );
+  const [autocompleteEnabled, setAutocompleteEnabled] = useState(
+    initialValues?.autocomplete_enabled ?? false
+  );
 
+  // ── Section 3: Services & Products ──
+  const [providerCost, setProviderCost] = useState(initialValues?.provider_cost ?? '');
+  const [providerPhone, setProviderPhone] = useState(
+    initialValues?.provider_phone ? formatUSPhone(initialValues.provider_phone) : ''
+  );
+  const [showServiceProvider, setShowServiceProvider] = useState(
+    !!initialServiceProvider?.name
+  );
+  const [serviceProviderEntry, setServiceProviderEntry] = useState<ServiceProviderFormEntry>(
+    initialServiceProvider ?? { name: '', phone: '', website_url: '', address: '' }
+  );
+  const [savedProviders, setSavedProviders] = useState<ServiceProvider[]>([]);
+  const [productEntries, setProductEntries] = useState<ProductFormEntry[]>(
+    initialProducts ?? []
+  );
+  const [removedTaskProductIds, setRemovedTaskProductIds] = useState<string[]>([]);
+
+  // ── Section 4: Reminders & Prep ──
+  const [prepNotes, setPrepNotes] = useState(initialValues?.prep_notes ?? '');
+  const [reminderEnabled, setReminderEnabled] = useState(
+    initialValues?.reminder_enabled ?? false
+  );
+  const [reminderValue, setReminderValue] = useState(initialValues?.reminder_value ?? 2);
+  const [reminderUnit, setReminderUnit] = useState<'minutes' | 'hours' | 'days' | 'weeks'>(
+    initialValues?.reminder_unit ?? 'days'
+  );
+
+  // ── Section open states (all open by default) ──
+  const [s1Open, setS1Open] = useState(true);
+  const [s2Open, setS2Open] = useState(true);
+  const [s3Open, setS3Open] = useState(true);
+  const [s4Open, setS4Open] = useState(true);
+
+  // ── Section 3 subsection open states (collapsed on load) ──
+  const [spOpen, setSpOpen] = useState(false);
+  const [productsOpen, setProductsOpen] = useState(false);
+
+  // ── Clock picker ──
+  const [clockTarget, setClockTarget] = useState<'scheduled' | 'slotA' | 'slotB' | null>(null);
+
+  // ── Countdown mode ──
   const [targetDate, setTargetDate]           = useState(initialValues?.target_date ?? '');
   const [targetLabel, setTargetLabel]         = useState(initialValues?.target_label ?? '');
   const [daysBeforeTarget, setDaysBeforeTarget] = useState(
@@ -113,25 +299,14 @@ export default function TaskForm({
     Array<{ due_date_start: string; due_date_end: string }>
   >([]);
 
+  // ── Category creation ──
   const [localCategories, setLocalCategories] = useState<Category[]>(initialCategories);
   const [showNewCategory, setShowNewCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryColor, setNewCategoryColor] = useState(COLOR_SWATCHES[0]);
   const [categoryLoading, setCategoryLoading] = useState(false);
 
-  const [productEntries, setProductEntries] = useState<ProductFormEntry[]>(
-    initialProducts ?? []
-  );
-  const [removedTaskProductIds, setRemovedTaskProductIds] = useState<string[]>([]);
-
-  const [showServiceProvider, setShowServiceProvider] = useState(
-    !!initialServiceProvider?.name
-  );
-  const [serviceProviderEntry, setServiceProviderEntry] = useState<ServiceProviderFormEntry>(
-    initialServiceProvider ?? { name: '', phone: '', website_url: '', address: '' }
-  );
-  const [savedProviders, setSavedProviders] = useState<ServiceProvider[]>([]);
-
+  // ── Common task suggestions ──
   const [commonTasks, setCommonTasks]           = useState<CommonTask[]>([]);
   const [matchedCommonTask, setMatchedCommonTask] = useState<CommonTask | null>(null);
   const fuzzyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -156,6 +331,8 @@ export default function TaskForm({
       .then(({ data }) => setSavedProviders(data ?? []));
   }, [categoryId, userId]);
 
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
   function intervalMinDays() {
     if (frequencyType === 'daily' || frequencyType === 'twice_daily') return 1;
     return toDays(intervalMin, intervalUnit);
@@ -173,6 +350,28 @@ export default function TaskForm({
     }
     return '';
   }
+
+  function fieldLabel(text: string) {
+    return (
+      <label className="block text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide">
+        {text}
+      </label>
+    );
+  }
+
+  const chipCls = (active: boolean) =>
+    `text-xs px-3 py-1.5 rounded-pill border transition-colors ${
+      active
+        ? 'border-charcoal bg-charcoal text-cream font-medium'
+        : 'border-glow-border text-warm-mid hover:border-warm-light'
+    }`;
+
+  const toggleCls = (active: boolean) =>
+    `flex-1 text-xs py-1.5 font-medium transition-colors ${
+      active ? 'bg-charcoal text-cream' : 'bg-stone text-warm-mid hover:bg-taupe'
+    }`;
+
+  // ── Category actions ──────────────────────────────────────────────────────
 
   async function handleCreateCategory() {
     if (!newCategoryName.trim()) return;
@@ -198,6 +397,8 @@ export default function TaskForm({
     setCategoryLoading(false);
   }
 
+  // ── Product actions ───────────────────────────────────────────────────────
+
   function addProduct() {
     if (productEntries.length >= 10) return;
     setProductEntries(prev => [...prev, emptyProduct()]);
@@ -215,6 +416,8 @@ export default function TaskForm({
     setProductEntries(prev => prev.filter((_, i) => i !== index));
   }
 
+  // ── Provider actions ──────────────────────────────────────────────────────
+
   function applySavedProvider(provider: ServiceProvider) {
     setServiceProviderEntry({
       id:          provider.id,
@@ -225,6 +428,8 @@ export default function TaskForm({
     });
     setShowServiceProvider(true);
   }
+
+  // ── Countdown preview ─────────────────────────────────────────────────────
 
   function buildPreview() {
     const err = validateInterval();
@@ -251,6 +456,8 @@ export default function TaskForm({
     setStep('countdown-preview');
   }
 
+  // ── Submit ────────────────────────────────────────────────────────────────
+
   async function handleSubmit(e?: React.FormEvent) {
     e?.preventDefault();
     setError('');
@@ -268,8 +475,8 @@ export default function TaskForm({
     setLoading(true);
     const supabase = createClient();
 
+    // Save service provider
     let serviceProviderId: string | null = null;
-
     if (showServiceProvider && serviceProviderEntry.name.trim()) {
       const spPayload = {
         name:        serviceProviderEntry.name.trim(),
@@ -297,31 +504,42 @@ export default function TaskForm({
     }
 
     const isTwiceD = frequencyType === 'twice_daily';
+    const providerCostNum = providerCost !== '' ? Number(providerCost) : null;
+    const phoneDigits = stripPhoneFormatting(providerPhone) || null;
+
     const taskPayload = {
-      name:                 name.trim(),
-      category_id:          categoryId || null,
-      description:          description.trim() || null,
-      interval_min_days:    intervalMinDays(),
-      interval_max_days:    intervalMaxDays(),
-      default_reminder_days: reminderDays,
-      default_cost:         defaultCost !== '' ? Number(defaultCost) : null,
-      reminder_notes:       reminderNotes.trim() || null,
-      user_id:              userId,
+      name:                  name.trim(),
+      category_id:           categoryId || null,
+      description:           description.trim() || null,
+      interval_min_days:     intervalMinDays(),
+      interval_max_days:     intervalMaxDays(),
+      // New cost model
+      provider_cost:         providerCostNum,
+      provider_phone:        phoneDigits,
+      default_cost:          providerCostNum,   // keep in sync for backward compat
+      // New reminder structure
+      autocomplete_enabled:  autocompleteEnabled,
+      prep_notes:            prepNotes.trim() || null,
+      reminder_notes:        prepNotes.trim() || null,  // backward compat alias
+      reminder_enabled:      reminderEnabled,
+      reminder_value:        reminderValue,
+      reminder_unit:         reminderUnit,
+      default_reminder_days: reminderEnabled && reminderUnit === 'days' ? reminderValue : reminderEnabled && reminderUnit === 'hours' ? Math.round(reminderValue / 24) : 0,
+      user_id:               userId,
       mode,
-      frequency_type:  mode === 'standard' ? frequencyType : 'interval',
-      slot_a_label:    isTwiceD ? (slotALabel.trim() || 'Morning') : null,
-      slot_a_time:     isTwiceD && slotATime  ? slotATime  : null,
-      slot_b_label:    isTwiceD ? (slotBLabel.trim() || 'Evening') : null,
-      slot_b_time:     isTwiceD && slotBTime  ? slotBTime  : null,
-      scheduled_time:    (!isTwiceD && showTimeOfDay && scheduledTime)   ? scheduledTime   : null,
-      time_of_day_label: (!isTwiceD && showTimeOfDay && timeOfDayLabel.trim()) ? timeOfDayLabel.trim() : null,
-      initial_anchor_date:
-        mode === 'standard' && anchorType === 'past' && anchorDate ? anchorDate : null,
+      frequency_type:        mode === 'standard' ? frequencyType : 'interval',
+      slot_a_label:          isTwiceD ? (slotALabel.trim() || 'Morning') : null,
+      slot_a_time:           isTwiceD && slotATime  ? slotATime  : null,
+      slot_b_label:          isTwiceD ? (slotBLabel.trim() || 'Evening') : null,
+      slot_b_time:           isTwiceD && slotBTime  ? slotBTime  : null,
+      scheduled_time:        (!isTwiceD && showTimeOfDay && scheduledTime) ? scheduledTime : null,
+      time_of_day_label:     (!isTwiceD && showTimeOfDay && timeOfDayLabel.trim()) ? timeOfDayLabel.trim() : null,
+      initial_anchor_date:   mode === 'standard' && anchorType === 'past' && anchorDate ? anchorDate : null,
       target_date:           mode === 'countdown' ? targetDate : null,
-      target_label:          mode === 'countdown' ? targetLabel.trim() || null : null,
+      target_label:          mode === 'countdown' ? (targetLabel.trim() || null) : null,
       days_before_target:    mode === 'countdown' ? daysBeforeTarget : null,
       continue_after_target: mode === 'countdown' ? continueAfterTarget : true,
-      service_provider_id:  serviceProviderId,
+      service_provider_id:   serviceProviderId,
     };
 
     let resolvedTaskId: string;
@@ -351,24 +569,36 @@ export default function TaskForm({
       }
     }
 
+    // Remove deleted products
     for (const tpId of removedTaskProductIds) {
       await supabase.from('task_products').delete().eq('id', tpId);
     }
 
+    // Save products
     for (const product of productEntries) {
       if (!product.name.trim()) continue;
 
       const productPayload = {
-        name:                  product.name.trim(),
-        notes:                 product.description.trim() || null,
-        product_url:           product.product_url.trim() || null,
-        uses_per_supply_unit:  product.uses_per_supply_unit !== '' ? product.uses_per_supply_unit : null,
-        user_id:               userId,
+        name:                 product.name.trim(),
+        notes:                product.description.trim() || null,
+        product_url:          product.product_url.trim() || null,
+        uses_per_supply_unit: product.uses_per_supply_unit !== '' ? product.uses_per_supply_unit : null,
+        user_id:              userId,
+      };
+
+      const tpCostPayload = {
+        purchase_price:     product.purchase_price !== '' ? Number(product.purchase_price) : null,
+        uses_per_container: product.uses_per_container !== '' ? Number(product.uses_per_container) : null,
       };
 
       if (product.id) {
+        // Update existing product and its task_products cost fields
         await supabase.from('products').update(productPayload).eq('id', product.id);
+        if (product.taskProductId) {
+          await supabase.from('task_products').update(tpCostPayload).eq('id', product.taskProductId);
+        }
       } else {
+        // Insert new product then link it
         const { data: newProduct } = await supabase
           .from('products')
           .insert(productPayload)
@@ -381,6 +611,7 @@ export default function TaskForm({
             product_id:  newProduct.id,
             user_id:     userId,
             track_usage: false,
+            ...tpCostPayload,
           });
         }
       }
@@ -404,222 +635,15 @@ export default function TaskForm({
     router.refresh();
   }
 
-  // ─── Sub-renders ───────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
+  // SUB-COMPONENTS
+  // ─────────────────────────────────────────────────────────────────────────
 
   function ErrorBanner() {
     if (!error) return null;
     return (
       <div className="bg-dust-lt border border-dust text-charcoal text-sm rounded-lg px-3 py-2">
         {error}
-      </div>
-    );
-  }
-
-  function fieldLabel(text: string) {
-    return (
-      <label className="block text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide">
-        {text}
-      </label>
-    );
-  }
-
-  const chipCls = (active: boolean) =>
-    `text-xs px-3 py-1.5 rounded-pill border transition-colors ${
-      active
-        ? 'border-charcoal bg-charcoal text-cream font-medium'
-        : 'border-glow-border text-warm-mid hover:border-warm-light'
-    }`;
-
-  const toggleCls = (active: boolean) =>
-    `flex-1 text-xs py-1.5 font-medium transition-colors ${
-      active ? 'bg-charcoal text-cream' : 'bg-stone text-warm-mid hover:bg-taupe'
-    }`;
-
-  function IntervalFields() {
-    return (
-      <div>
-        {fieldLabel('Interval')}
-        <p className="text-xs text-warm-light mb-2">How often this ritual recurs.</p>
-        <div className="flex rounded-lg border border-glow-border overflow-hidden mb-3">
-          {(['exact', 'range'] as IntervalType[]).map(t => (
-            <button
-              key={t} type="button" onClick={() => setIntervalType(t)}
-              className={toggleCls(intervalType === t)}
-            >
-              {t === 'exact' ? 'Exact' : 'Range (min – max)'}
-            </button>
-          ))}
-        </div>
-        <div className="flex items-end gap-2">
-          <div className="flex-1">
-            <label className="text-xs text-warm-light mb-1 block">
-              {intervalType === 'exact' ? 'Every' : 'Min'}
-            </label>
-            <input
-              type="number" min={1} max={365} value={intervalMin}
-              onChange={e => setIntervalMin(Number(e.target.value))}
-              className="w-full"
-            />
-          </div>
-          {intervalType === 'range' && (
-            <>
-              <span className="text-warm-light mb-2">–</span>
-              <div className="flex-1">
-                <label className="text-xs text-warm-light mb-1 block">Max</label>
-                <input
-                  type="number" min={1} max={365} value={intervalMax}
-                  onChange={e => setIntervalMax(Number(e.target.value))}
-                  className="w-full"
-                />
-              </div>
-            </>
-          )}
-          <div>
-            <label className="text-xs text-warm-light mb-1 block">Unit</label>
-            <select
-              value={intervalUnit}
-              onChange={e => setIntervalUnit(e.target.value as IntervalUnit)}
-              className="border border-glow-border rounded-md px-2 py-2 text-sm bg-stone"
-            >
-              <option value="days">days</option>
-              <option value="weeks">weeks</option>
-            </select>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  function FrequencyFields() {
-    return (
-      <div className="space-y-3">
-        <div>
-          {fieldLabel('Frequency')}
-          <div className="flex gap-1.5 flex-wrap">
-            {([
-              { value: 'interval',    label: 'Custom interval' },
-              { value: 'daily',       label: 'Daily' },
-              { value: 'twice_daily', label: 'Twice daily' },
-            ] as { value: FrequencyType; label: string }[]).map(opt => (
-              <button key={opt.value} type="button" onClick={() => setFrequencyType(opt.value)} className={chipCls(frequencyType === opt.value)}>
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {frequencyType === 'interval' && (
-          <div className="pl-3 border-l-2 border-glow-border space-y-2">
-            <p className="text-xs text-warm-light">How often this ritual recurs.</p>
-            <div className="flex rounded-lg border border-glow-border overflow-hidden">
-              {(['exact', 'range'] as IntervalType[]).map(t => (
-                <button
-                  key={t} type="button" onClick={() => setIntervalType(t)}
-                  className={toggleCls(intervalType === t)}
-                >
-                  {t === 'exact' ? 'Exact' : 'Range (min – max)'}
-                </button>
-              ))}
-            </div>
-            <div className="flex items-end gap-2">
-              <div className="flex-1">
-                <label className="text-xs text-warm-light mb-1 block">{intervalType === 'exact' ? 'Every' : 'Min'}</label>
-                <input
-                  type="number" min={1} max={365} value={intervalMin}
-                  onChange={e => setIntervalMin(Number(e.target.value))}
-                  className="w-full"
-                />
-              </div>
-              {intervalType === 'range' && (
-                <>
-                  <span className="text-warm-light mb-2">–</span>
-                  <div className="flex-1">
-                    <label className="text-xs text-warm-light mb-1 block">Max</label>
-                    <input
-                      type="number" min={1} max={365} value={intervalMax}
-                      onChange={e => setIntervalMax(Number(e.target.value))}
-                      className="w-full"
-                    />
-                  </div>
-                </>
-              )}
-              <div>
-                <label className="text-xs text-warm-light mb-1 block">Unit</label>
-                <select
-                  value={intervalUnit}
-                  onChange={e => setIntervalUnit(e.target.value as IntervalUnit)}
-                  className="border border-glow-border rounded-md px-2 py-2 text-sm bg-stone"
-                >
-                  <option value="days">days</option>
-                  <option value="weeks">weeks</option>
-                </select>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {frequencyType === 'twice_daily' && (
-          <div className="pl-3 border-l-2 border-glow-border space-y-2">
-            <p className="text-xs text-warm-light">Two occurrences per day. Each slot can have its own label and time.</p>
-            {([
-              { slot: 'A', label: slotALabel, setLabel: setSlotALabel, time: slotATime, setTime: setSlotATime },
-              { slot: 'B', label: slotBLabel, setLabel: setSlotBLabel, time: slotBTime, setTime: setSlotBTime },
-            ] as const).map(s => (
-              <div key={s.slot} className="flex items-center gap-2">
-                <span className="text-xs font-medium text-warm-mid w-5 flex-shrink-0">
-                  {s.slot === 'A' ? '1st' : '2nd'}
-                </span>
-                <input
-                  type="text"
-                  value={s.label}
-                  onChange={e => s.setLabel(e.target.value)}
-                  placeholder={s.slot === 'A' ? 'Morning' : 'Evening'}
-                  maxLength={20}
-                  className="flex-1"
-                />
-                <input
-                  type="time"
-                  value={s.time}
-                  onChange={e => s.setTime(e.target.value)}
-                  className=""
-                />
-              </div>
-            ))}
-          </div>
-        )}
-
-        {frequencyType !== 'twice_daily' && (
-          <div>
-            {!showTimeOfDay ? (
-              <button type="button" onClick={() => setShowTimeOfDay(true)} className="text-xs text-warm-mid hover:text-charcoal">
-                + Add time of day
-              </button>
-            ) : (
-              <div className="pl-3 border-l-2 border-glow-border space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-medium text-warm-mid">Time of day (optional)</p>
-                  <button type="button" onClick={() => { setShowTimeOfDay(false); setScheduledTime(''); setTimeOfDayLabel(''); }} className="text-xs text-warm-light hover:text-charcoal">Remove</button>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="time"
-                    value={scheduledTime}
-                    onChange={e => setScheduledTime(e.target.value)}
-                    className=""
-                  />
-                  <input
-                    type="text"
-                    value={timeOfDayLabel}
-                    onChange={e => setTimeOfDayLabel(e.target.value)}
-                    placeholder="Label (e.g. After shower)"
-                    maxLength={20}
-                    className="flex-1"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-        )}
       </div>
     );
   }
@@ -698,192 +722,315 @@ export default function TaskForm({
     );
   }
 
-  function CoreFields() {
+  function FrequencyFields() {
     return (
-      <>
-        <div>
-          {fieldLabel('Ritual name *')}
-          <input
-            required type="text" value={name}
-            onChange={e => {
-              const val = e.target.value;
-              setName(val);
-              if (fuzzyTimerRef.current) clearTimeout(fuzzyTimerRef.current);
-              fuzzyTimerRef.current = setTimeout(() => {
-                const match = fuzzyMatchCommonTask(val, commonTasks);
-                setMatchedCommonTask(match);
-                if (match && !isEdit) {
-                  if (match.interval_min_days != null) {
-                    setIntervalMin(Math.round(match.interval_min_days / 7));
-                    setIntervalUnit('weeks');
-                  }
-                  if (match.interval_max_days != null) {
-                    setIntervalMax(Math.round(match.interval_max_days / 7));
-                    setIntervalType('range');
-                  }
-                }
-              }, 400);
-            }}
-            placeholder="e.g. Hair Color"
-            className="w-full"
-          />
-          {matchedCommonTask && (
-            <div className="mt-1.5 space-y-1">
-              <p className="text-xs text-warm-mid">Suggested interval based on common practice.</p>
-              {matchedCommonTask.prep_steps && (
-                <p className="text-xs text-warm-light">Prep: {matchedCommonTask.prep_steps}</p>
+      <div className="space-y-3">
+        {mode === 'countdown' ? (
+          /* Countdown: interval only */
+          <div>
+            {fieldLabel('Interval')}
+            <div className="flex rounded-lg border border-glow-border overflow-hidden mb-3">
+              {(['exact', 'range'] as IntervalType[]).map(t => (
+                <button
+                  key={t} type="button" onClick={() => setIntervalType(t)}
+                  className={toggleCls(intervalType === t)}
+                >
+                  {t === 'exact' ? 'Exact' : 'Range (min – max)'}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <label className="text-xs text-warm-light mb-1 block">{intervalType === 'exact' ? 'Every' : 'Min'}</label>
+                <input type="number" min={1} max={365} value={intervalMin} onChange={e => setIntervalMin(Number(e.target.value))} className="w-full" />
+              </div>
+              {intervalType === 'range' && (
+                <>
+                  <span className="text-warm-light mb-2">–</span>
+                  <div className="flex-1">
+                    <label className="text-xs text-warm-light mb-1 block">Max</label>
+                    <input type="number" min={1} max={365} value={intervalMax} onChange={e => setIntervalMax(Number(e.target.value))} className="w-full" />
+                  </div>
+                </>
               )}
-              {matchedCommonTask.suggested_notes && (
-                <p className="text-xs text-warm-light">Notes: {matchedCommonTask.suggested_notes}</p>
+              <div>
+                <label className="text-xs text-warm-light mb-1 block">Unit</label>
+                <select value={intervalUnit} onChange={e => setIntervalUnit(e.target.value as IntervalUnit)} className="border border-glow-border rounded-md px-2 py-2 text-sm bg-stone">
+                  <option value="days">days</option>
+                  <option value="weeks">weeks</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* Standard: full frequency selector */
+          <>
+            <div>
+              {fieldLabel('Frequency')}
+              <div className="flex gap-1.5 flex-wrap">
+                {([
+                  { value: 'interval',    label: 'Custom interval' },
+                  { value: 'daily',       label: 'Daily' },
+                  { value: 'twice_daily', label: 'Twice daily' },
+                ] as { value: FrequencyType; label: string }[]).map(opt => (
+                  <button key={opt.value} type="button" onClick={() => setFrequencyType(opt.value)} className={chipCls(frequencyType === opt.value)}>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {frequencyType === 'interval' && (
+              <div className="pl-3 border-l-2 border-glow-border space-y-2">
+                <div className="flex rounded-lg border border-glow-border overflow-hidden">
+                  {(['exact', 'range'] as IntervalType[]).map(t => (
+                    <button key={t} type="button" onClick={() => setIntervalType(t)} className={toggleCls(intervalType === t)}>
+                      {t === 'exact' ? 'Exact' : 'Range (min – max)'}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <label className="text-xs text-warm-light mb-1 block">{intervalType === 'exact' ? 'Every' : 'Min'}</label>
+                    <input type="number" min={1} max={365} value={intervalMin} onChange={e => setIntervalMin(Number(e.target.value))} className="w-full" />
+                  </div>
+                  {intervalType === 'range' && (
+                    <>
+                      <span className="text-warm-light mb-2">–</span>
+                      <div className="flex-1">
+                        <label className="text-xs text-warm-light mb-1 block">Max</label>
+                        <input type="number" min={1} max={365} value={intervalMax} onChange={e => setIntervalMax(Number(e.target.value))} className="w-full" />
+                      </div>
+                    </>
+                  )}
+                  <div>
+                    <label className="text-xs text-warm-light mb-1 block">Unit</label>
+                    <select value={intervalUnit} onChange={e => setIntervalUnit(e.target.value as IntervalUnit)} className="border border-glow-border rounded-md px-2 py-2 text-sm bg-stone">
+                      <option value="days">days</option>
+                      <option value="weeks">weeks</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {frequencyType === 'twice_daily' && (
+              <div className="pl-3 border-l-2 border-glow-border space-y-2">
+                <p className="text-xs text-warm-light">Two occurrences per day. Each slot can have its own label and time.</p>
+                {([
+                  { slot: 'A', label: slotALabel, setLabel: setSlotALabel, time: slotATime, clockKey: 'slotA' as const },
+                  { slot: 'B', label: slotBLabel, setLabel: setSlotBLabel, time: slotBTime, clockKey: 'slotB' as const },
+                ] as const).map(s => (
+                  <div key={s.slot} className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-warm-mid w-5 flex-shrink-0">{s.slot === 'A' ? '1st' : '2nd'}</span>
+                    <input type="text" value={s.label} onChange={e => s.setLabel(e.target.value)} placeholder={s.slot === 'A' ? 'Morning' : 'Evening'} maxLength={20} className="flex-1" />
+                    <button
+                      type="button"
+                      onClick={() => setClockTarget(s.clockKey)}
+                      className="border border-glow-border rounded-md px-3 py-2 text-sm bg-stone text-charcoal min-w-[80px] text-left"
+                    >
+                      {s.time ? s.time : <span className="text-warm-light">Time</span>}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {frequencyType !== 'twice_daily' && (
+              <div>
+                {!showTimeOfDay ? (
+                  <button type="button" onClick={() => setShowTimeOfDay(true)} className="text-xs text-warm-mid hover:text-charcoal">+ Add time of day</button>
+                ) : (
+                  <div className="pl-3 border-l-2 border-glow-border space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-medium text-warm-mid">Time of day (optional)</p>
+                      <button type="button" onClick={() => { setShowTimeOfDay(false); setScheduledTime(''); setTimeOfDayLabel(''); }} className="text-xs text-warm-light hover:text-charcoal">Remove</button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setClockTarget('scheduled')}
+                        className="border border-glow-border rounded-md px-3 py-2 text-sm bg-stone text-charcoal min-w-[80px] text-left"
+                      >
+                        {scheduledTime ? scheduledTime : <span className="text-warm-light">Time</span>}
+                      </button>
+                      <input type="text" value={timeOfDayLabel} onChange={e => setTimeOfDayLabel(e.target.value)} placeholder="Label (e.g. After shower)" maxLength={20} className="flex-1" />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Autocomplete toggle */}
+        <div className="bg-taupe border border-glow-border rounded-lg px-4 py-3 flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-charcoal">Auto-complete this ritual</p>
+            <p className="text-xs text-warm-light mt-0.5">
+              Mark as kept automatically at the scheduled time. Good for rituals you always do.
+            </p>
+          </div>
+          <ToggleSwitch
+            checked={autocompleteEnabled}
+            onChange={v => {
+              setAutocompleteEnabled(v);
+              if (v) setReminderEnabled(false);
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  function ServicesAndProductsSection() {
+    const providerNum = providerCost !== '' ? Number(providerCost) : 0;
+    const productSum = productEntries.reduce((sum, p) => {
+      if (p.purchase_price !== '' && p.uses_per_container !== '' && Number(p.uses_per_container) > 0) {
+        return sum + Number(p.purchase_price) / Number(p.uses_per_container);
+      }
+      return sum;
+    }, 0);
+    const totalCost = providerNum + productSum;
+    const hasCostData = providerNum > 0 || productSum > 0;
+
+    const spName = serviceProviderEntry.name.trim();
+    const spSummary = spName || 'No provider set';
+    const productSummary = productEntries.length > 0
+      ? `${productEntries.length} product${productEntries.length !== 1 ? 's' : ''} linked`
+      : 'No products linked';
+
+    return (
+      <div className="space-y-4">
+        {/* Service provider — collapsible */}
+        <div style={{ border: '1px solid #cdc6b6', borderRadius: '10px', backgroundColor: '#f6f1e6', overflow: 'hidden' }}>
+          <button
+            type="button"
+            onClick={() => setSpOpen(o => !o)}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+          >
+            <div>
+              <p style={{ fontSize: '10px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#a8a297', marginBottom: '2px' }}>Service Provider</p>
+              {!spOpen && <p style={{ fontSize: '12px', color: '#6b665e' }}>{spSummary}</p>}
+            </div>
+            <span style={{ fontSize: '16px', color: '#a8a297', transform: spOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s ease', marginLeft: '8px' }}>›</span>
+          </button>
+
+          {spOpen && (
+            <div style={{ borderTop: '1px solid #cdc6b6', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {savedProviders.length > 0 && (
+                <div>
+                  <label className="block text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide">Use a saved provider</label>
+                  <select
+                    defaultValue=""
+                    onChange={e => {
+                      const sp = savedProviders.find(p => p.id === e.target.value);
+                      if (sp) applySavedProvider(sp);
+                    }}
+                    className="w-full border border-glow-border rounded-md px-3 py-2 text-sm bg-stone"
+                  >
+                    <option value="">— or fill in below —</option>
+                    {savedProviders.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+              )}
+              <div>
+                <label className="block text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide">Provider name</label>
+                <input
+                  type="text"
+                  value={serviceProviderEntry.name}
+                  onChange={e => { setServiceProviderEntry(s => ({ ...s, name: e.target.value })); setShowServiceProvider(true); }}
+                  placeholder="e.g. Sarah at Color Bar Salon"
+                  className="w-full"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide">Phone</label>
+                <input
+                  type="tel"
+                  value={providerPhone}
+                  onChange={e => setProviderPhone(e.target.value)}
+                  onBlur={e => {
+                    const d = stripPhoneFormatting(e.target.value);
+                    if (d.length === 10) setProviderPhone(formatUSPhone(d));
+                  }}
+                  placeholder="(XXX) XXX-XXXX"
+                  className="w-full"
+                />
+                {providerPhone && stripPhoneFormatting(providerPhone).length > 0 &&
+                  stripPhoneFormatting(providerPhone).length !== 10 && (
+                  <p className="text-xs text-dust mt-1">Enter a 10-digit US number.</p>
+                )}
+              </div>
+              <DollarInput label="Cost per visit" value={providerCost} onChange={setProviderCost} />
+            </div>
+          )}
+        </div>
+
+        {/* Products — collapsible */}
+        <div style={{ border: '1px solid #cdc6b6', borderRadius: '10px', backgroundColor: '#f6f1e6', overflow: 'hidden' }}>
+          <button
+            type="button"
+            onClick={() => setProductsOpen(o => !o)}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+          >
+            <div>
+              <p style={{ fontSize: '10px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#a8a297', marginBottom: '2px' }}>Products Used</p>
+              {!productsOpen && <p style={{ fontSize: '12px', color: '#6b665e' }}>{productSummary}</p>}
+            </div>
+            <span style={{ fontSize: '16px', color: '#a8a297', transform: productsOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s ease', marginLeft: '8px' }}>›</span>
+          </button>
+
+          {productsOpen && (
+            <div style={{ borderTop: '1px solid #cdc6b6', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {productEntries.length > 0 && (
+                <div className="space-y-3">
+                  {productEntries.map((product, i) => {
+                    const costPerUse =
+                      product.purchase_price !== '' &&
+                      product.uses_per_container !== '' &&
+                      Number(product.uses_per_container) > 0
+                        ? Number(product.purchase_price) / Number(product.uses_per_container)
+                        : null;
+                    return (
+                      <div key={i} className="bg-taupe rounded-lg border border-glow-border p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="label-overline">Product {i + 1}</span>
+                          <button type="button" onClick={() => removeProduct(i)} className="text-xs text-warm-light hover:text-charcoal">Remove</button>
+                        </div>
+                        <input type="text" value={product.name} onChange={e => updateProduct(i, { ...product, name: e.target.value })} placeholder="Product name *" className="w-full" />
+                        <input type="url" value={product.product_url} onChange={e => updateProduct(i, { ...product, product_url: e.target.value })} placeholder="Product link (optional)" className="w-full" />
+                        <div className="grid grid-cols-2 gap-2">
+                          <DollarInput label="Purchase price" value={product.purchase_price} onChange={v => updateProduct(i, { ...product, purchase_price: v })} />
+                          <div>
+                            <label className="block text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide">Uses per container</label>
+                            <input type="number" min={1} value={product.uses_per_container === '' ? '' : product.uses_per_container} onChange={e => updateProduct(i, { ...product, uses_per_container: e.target.value === '' ? '' : Number(e.target.value) })} placeholder="e.g. 60" className="w-full" />
+                          </div>
+                        </div>
+                        {costPerUse != null && <p className="text-xs text-warm-light">≈ ${costPerUse.toFixed(2)} per use</p>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {productEntries.length < 10 && (
+                <button type="button" onClick={addProduct} className="text-xs text-warm-mid hover:text-charcoal font-medium text-left">+ Add product</button>
               )}
             </div>
           )}
         </div>
 
-        {CategoryField()}
-
-        <div>
-          {fieldLabel('Description / notes')}
-          <p className="text-xs text-warm-light mb-2">Instructions, products, etc. — shown on every instance.</p>
-          <textarea
-            rows={4} value={description}
-            onChange={e => setDescription(e.target.value)}
-            placeholder="e.g. Use Wella 6N + 20-vol developer, apply root-to-tip..."
-            className="w-full resize-none"
-          />
-        </div>
-
-        <div>
-          {fieldLabel('Typical cost ($)')}
-          <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-warm-light text-sm">$</span>
-            <input
-              type="number" min={0} step="0.01" value={defaultCost}
-              onChange={e => setDefaultCost(e.target.value)}
-              placeholder="0.00"
-              className="w-full pl-7"
-            />
-          </div>
-          <p className="text-xs text-warm-light mt-1">Pre-fills the cost field when you log a completion. Optional.</p>
-        </div>
-
-        <div>
-          {fieldLabel('Reminder notes')}
-          <textarea
-            rows={3} value={reminderNotes}
-            onChange={e => setReminderNotes(e.target.value)}
-            placeholder="Notes to include with reminders (e.g. don't shave beforehand)..."
-            className="w-full resize-none"
-          />
-          <p className="text-xs text-warm-light mt-1">Shown on the instance detail when it's due. Optional.</p>
-        </div>
-
-        <div>
-          {fieldLabel('Reminder offset (days before due)')}
-          <input
-            type="number" min={0} max={14} value={reminderDays}
-            onChange={e => setReminderDays(Number(e.target.value))}
-            className="w-full"
-          />
-          <p className="text-xs text-warm-light mt-1">0 = on the due date. Reminders coming soon.</p>
-        </div>
-      </>
-    );
-  }
-
-  function ServiceProviderSection() {
-    return (
-      <div className="border border-glow-border rounded-lg overflow-hidden">
-        <button
-          type="button"
-          onClick={() => setShowServiceProvider(s => !s)}
-          className="w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-taupe transition-colors"
-        >
-          <span className={`font-medium ${showServiceProvider || serviceProviderEntry.name ? 'text-charcoal' : 'text-warm-mid'}`}>
-            {showServiceProvider || serviceProviderEntry.name ? 'Service Provider' : '+ Add Service Provider'}
-          </span>
-          <span className="text-warm-light text-lg leading-none">{showServiceProvider ? '−' : '+'}</span>
-        </button>
-
-        {showServiceProvider && (
-          <div className="px-4 pb-4 space-y-3 border-t border-glow-border">
-            {savedProviders.length > 0 && (
-              <div className="pt-3">
-                <label className="block text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide">
-                  Use a saved provider
-                </label>
-                <select
-                  defaultValue=""
-                  onChange={e => {
-                    const sp = savedProviders.find(p => p.id === e.target.value);
-                    if (sp) applySavedProvider(sp);
-                  }}
-                  className="w-full border border-glow-border rounded-md px-3 py-2 text-sm bg-stone"
-                >
-                  <option value="">— or add a new one —</option>
-                  {savedProviders.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-            {!savedProviders.length && <div className="pt-2" />}
-
-            <div>
-              <label className="text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide block">Name *</label>
-              <input
-                type="text"
-                value={serviceProviderEntry.name}
-                onChange={e => setServiceProviderEntry(s => ({ ...s, name: e.target.value }))}
-                placeholder="e.g. Sarah at Color Bar Salon"
-                className="w-full"
-              />
+        {/* Cost summary */}
+        {hasCostData && (
+          <div className="border-t border-glow-border pt-4">
+            <div className="flex items-baseline justify-between">
+              <p className="text-xs font-medium text-charcoal">Estimated cost per session</p>
+              <p className="font-display text-lg text-charcoal">${totalCost.toFixed(2)}</p>
             </div>
-
-            <div>
-              <label className="text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide block">Phone</label>
-              <input
-                type="tel"
-                value={serviceProviderEntry.phone}
-                onChange={e => setServiceProviderEntry(s => ({ ...s, phone: e.target.value }))}
-                placeholder="(optional)"
-                className="w-full"
-              />
-            </div>
-
-            <div>
-              <label className="text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide block">Website / Scheduler URL</label>
-              <input
-                type="url"
-                value={serviceProviderEntry.website_url}
-                onChange={e => setServiceProviderEntry(s => ({ ...s, website_url: e.target.value }))}
-                placeholder="https://... (optional)"
-                className="w-full"
-              />
-            </div>
-
-            <div>
-              <label className="text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide block">Address</label>
-              <textarea
-                rows={2}
-                value={serviceProviderEntry.address}
-                onChange={e => setServiceProviderEntry(s => ({ ...s, address: e.target.value }))}
-                placeholder="Street, City, State ZIP (optional)"
-                className="w-full resize-none"
-              />
-            </div>
-
-            {serviceProviderEntry.name && (
-              <button
-                type="button"
-                onClick={() => {
-                  setServiceProviderEntry({ name: '', phone: '', website_url: '', address: '' });
-                  setShowServiceProvider(false);
-                }}
-                className="text-xs text-warm-light hover:text-charcoal"
-              >
-                Remove provider
-              </button>
+            {providerNum > 0 && productSum > 0 && (
+              <p className="text-xs text-warm-mid mt-0.5">
+                Service: ${providerNum.toFixed(2)} · Products: ${productSum.toFixed(2)}
+              </p>
             )}
           </div>
         )}
@@ -891,67 +1038,61 @@ export default function TaskForm({
     );
   }
 
-  function ProductsSection() {
+  function RemindersAndPrepSection() {
     return (
-      <div>
-        <p className="label-overline mb-2">Products</p>
+      <div className="space-y-4">
+        <div>
+          <label className="block text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide">Prep Notes</label>
+          <textarea
+            rows={3}
+            value={prepNotes}
+            onChange={e => setPrepNotes(e.target.value)}
+            placeholder="What should you do or know before this ritual? e.g. arrive makeup-free, stop retinoids 3 days before."
+            className="w-full resize-none"
+          />
+        </div>
 
-        {productEntries.length > 0 && (
-          <div className="space-y-3 mb-3">
-            {productEntries.map((product, i) => (
-              <div key={i} className="bg-taupe rounded-lg border border-glow-border p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="label-overline">Product {i + 1}</span>
-                  <button
-                    type="button"
-                    onClick={() => removeProduct(i)}
-                    className="text-xs text-warm-light hover:text-charcoal"
-                  >
-                    Remove
-                  </button>
-                </div>
-
-                <input
-                  type="text"
-                  required={product.name !== ''}
-                  value={product.name}
-                  onChange={e => updateProduct(i, { ...product, name: e.target.value })}
-                  placeholder="Product name *"
-                  className="w-full"
-                />
-
-                <textarea
-                  rows={2}
-                  value={product.description}
-                  onChange={e => updateProduct(i, { ...product, description: e.target.value })}
-                  placeholder="Description (optional)"
-                  className="w-full resize-none"
-                />
-
-                <input
-                  type="url"
-                  value={product.product_url}
-                  onChange={e => updateProduct(i, { ...product, product_url: e.target.value })}
-                  placeholder="Product link (optional) — https://..."
-                  className="w-full"
-                />
-
-                <div className="flex items-center gap-2 opacity-50 cursor-not-allowed select-none">
-                  <input type="checkbox" disabled checked={false} className="h-4 w-4 rounded border-glow-border" />
-                  <span className="text-sm text-warm-mid">Track usage</span>
-                  <span className="text-xs text-warm-light bg-taupe px-2 py-0.5 rounded-pill border border-glow-border">Coming soon</span>
-                </div>
-              </div>
-            ))}
+        <div className={`flex items-start gap-3 ${autocompleteEnabled ? 'opacity-40' : ''}`}>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-charcoal">Prompt for this ritual</p>
+            {autocompleteEnabled ? (
+              <p className="text-xs text-warm-light mt-0.5">Auto-complete rituals don't need a prompt.</p>
+            ) : (
+              <p className="text-xs text-warm-light mt-0.5">Show a reminder before this ritual is due.</p>
+            )}
           </div>
-        )}
+          <ToggleSwitch
+            checked={reminderEnabled}
+            onChange={setReminderEnabled}
+            disabled={autocompleteEnabled}
+          />
+        </div>
 
-        {productEntries.length < 10 ? (
-          <button type="button" onClick={addProduct} className="text-sm text-warm-mid hover:text-charcoal font-medium">
-            + Add Product
-          </button>
-        ) : (
-          <p className="text-xs text-warm-light">Maximum 10 products per ritual.</p>
+        {reminderEnabled && !autocompleteEnabled && (
+          <div className="pl-3 border-l-2 border-glow-border">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm text-warm-mid">Remind me</span>
+              <input
+                type="number"
+                min={1}
+                max={99}
+                value={reminderValue}
+                onChange={e => setReminderValue(Number(e.target.value))}
+                className="w-16 text-center"
+              />
+              <select
+                value={reminderUnit}
+                onChange={e => setReminderUnit(e.target.value as 'minutes' | 'hours' | 'days' | 'weeks')}
+                className="border border-glow-border rounded-md px-2 py-2 text-sm bg-stone"
+              >
+                <option value="minutes">minutes</option>
+                <option value="hours">hours</option>
+                <option value="days">days</option>
+                <option value="weeks">weeks</option>
+              </select>
+              <span className="text-sm text-warm-mid">before</span>
+            </div>
+          </div>
         )}
       </div>
     );
@@ -1015,29 +1156,19 @@ export default function TaskForm({
             <button
               key={t}
               type="button"
-              onClick={() => setAnchorType(t)}
+              onClick={() => { setAnchorType(t); if (t === 'today') setStep('details'); }}
               className={`w-full text-left rounded-lg border-2 px-4 py-3 transition-colors ${
                 anchorType === t ? 'border-charcoal bg-taupe' : 'border-glow-border hover:border-warm-light'
               }`}
             >
-              <p className="text-sm font-medium text-charcoal">
-                {t === 'today' ? 'Today' : 'Enter a past date'}
-              </p>
+              <p className="text-sm font-medium text-charcoal">{t === 'today' ? 'Today' : 'Enter a past date'}</p>
               <p className="text-xs text-warm-light">
-                {t === 'today'
-                  ? 'Start the countdown from right now.'
-                  : 'Use a real past date so the schedule starts from reality.'}
+                {t === 'today' ? 'Start the countdown from right now.' : 'Use a real past date so the schedule starts from reality.'}
               </p>
             </button>
           ))}
           {anchorType === 'past' && (
-            <input
-              type="date"
-              value={anchorDate}
-              max={format(new Date(), 'yyyy-MM-dd')}
-              onChange={e => setAnchorDate(e.target.value)}
-              className="w-full"
-            />
+            <input type="date" value={anchorDate} max={format(new Date(), 'yyyy-MM-dd')} onChange={e => setAnchorDate(e.target.value)} className="w-full" />
           )}
         </div>
         <button
@@ -1098,16 +1229,29 @@ export default function TaskForm({
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // STEP: details
+  // STEP: details — four sections
   // ═══════════════════════════════════════════════════════════════════════════
 
   return (
+    <>
+    {clockTarget && (
+      <ClockPicker
+        value={clockTarget === 'scheduled' ? scheduledTime || null : clockTarget === 'slotA' ? slotATime || null : slotBTime || null}
+        onChange={t => {
+          if (clockTarget === 'scheduled') setScheduledTime(t);
+          else if (clockTarget === 'slotA') setSlotATime(t);
+          else setSlotBTime(t);
+          setClockTarget(null);
+        }}
+        onClose={() => setClockTarget(null)}
+      />
+    )}
     <form
       onSubmit={e => {
         e.preventDefault();
         mode === 'countdown' && !isEdit ? buildPreview() : handleSubmit(e);
       }}
-      className="space-y-5"
+      className="space-y-4"
     >
       {!isEdit && (
         <button type="button" onClick={() => setStep(mode === 'standard' ? 'anchor-date' : 'mode-choice')} className="text-sm text-warm-light hover:text-charcoal">← Back</button>
@@ -1122,63 +1266,102 @@ export default function TaskForm({
       )}
 
       {ErrorBanner()}
-      {CoreFields()}
-      {mode === 'standard' ? FrequencyFields() : IntervalFields()}
 
+      {/* Countdown-specific fields (above sections) */}
       {mode === 'countdown' && (
-        <>
+        <div className="space-y-3 bg-taupe border border-glow-border rounded-lg px-4 py-4">
+          <p className="label-overline">Countdown settings</p>
           <div>
             {fieldLabel('Target date *')}
-            <input
-              type="date"
-              value={targetDate}
-              min={format(new Date(), 'yyyy-MM-dd')}
-              onChange={e => setTargetDate(e.target.value)}
-              className="w-full"
-            />
+            <input type="date" value={targetDate} min={format(new Date(), 'yyyy-MM-dd')} onChange={e => setTargetDate(e.target.value)} className="w-full" />
           </div>
           <div>
             {fieldLabel('Event name (optional)')}
-            <input
-              type="text"
-              value={targetLabel}
-              onChange={e => setTargetLabel(e.target.value)}
-              placeholder="e.g. Wedding, Photoshoot"
-              className="w-full"
-            />
+            <input type="text" value={targetLabel} onChange={e => setTargetLabel(e.target.value)} placeholder="e.g. Wedding, Photoshoot" className="w-full" />
           </div>
           <div>
-            {fieldLabel('Final instance should be this many days before target')}
-            <input
-              type="number" min={1} max={60} value={daysBeforeTarget}
-              onChange={e => setDaysBeforeTarget(Number(e.target.value))}
-              className="w-full"
-            />
+            {fieldLabel('Final instance: days before target')}
+            <input type="number" min={1} max={60} value={daysBeforeTarget} onChange={e => setDaysBeforeTarget(Number(e.target.value))} className="w-full" />
             <p className="text-xs text-warm-light mt-1">e.g. 7 = last instance due about one week before your event.</p>
           </div>
           <div className="flex items-start gap-3">
-            <input
-              type="checkbox"
-              id="continueAfterTarget"
-              checked={continueAfterTarget}
-              onChange={e => setContinueAfterTarget(e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-glow-border"
-            />
+            <input type="checkbox" id="continueAfterTarget" checked={continueAfterTarget} onChange={e => setContinueAfterTarget(e.target.checked)} className="mt-0.5 h-4 w-4 rounded border-glow-border" />
             <div>
-              <label htmlFor="continueAfterTarget" className="text-sm font-medium text-charcoal">
-                Continue after target event
-              </label>
-              <p className="text-xs text-warm-light mt-0.5">
-                After your event date passes, switch to standard forward-scheduling with the same interval.
-              </p>
+              <label htmlFor="continueAfterTarget" className="text-sm font-medium text-charcoal">Continue after target event</label>
+              <p className="text-xs text-warm-light mt-0.5">Switch to forward-scheduling after your event date passes.</p>
             </div>
           </div>
-        </>
+        </div>
       )}
 
-      {ServiceProviderSection()}
-      {ProductsSection()}
+      {/* Section 1: Core Details */}
+      <Section title="CORE DETAILS" subtitle="What are we tracking" isOpen={s1Open} onToggle={() => setS1Open(o => !o)}>
+        {CategoryField()}
 
+        <div>
+          {fieldLabel('Ritual name *')}
+          <input
+            required
+            type="text"
+            value={name}
+            onChange={e => {
+              const val = e.target.value;
+              setName(val);
+              if (fuzzyTimerRef.current) clearTimeout(fuzzyTimerRef.current);
+              fuzzyTimerRef.current = setTimeout(() => {
+                const match = fuzzyMatchCommonTask(val, commonTasks);
+                setMatchedCommonTask(match);
+                if (match && !isEdit) {
+                  if (match.interval_min_days != null) {
+                    setIntervalMin(Math.round(match.interval_min_days / 7));
+                    setIntervalUnit('weeks');
+                  }
+                  if (match.interval_max_days != null) {
+                    setIntervalMax(Math.round(match.interval_max_days / 7));
+                    setIntervalType('range');
+                  }
+                }
+              }, 400);
+            }}
+            placeholder="Name this ritual"
+            className="w-full font-display text-lg"
+          />
+          {matchedCommonTask && (
+            <div className="mt-1.5 space-y-1">
+              <p className="text-xs text-warm-mid">Suggested interval based on common practice.</p>
+              {matchedCommonTask.prep_steps && <p className="text-xs text-warm-light">Prep: {matchedCommonTask.prep_steps}</p>}
+            </div>
+          )}
+        </div>
+
+        <div>
+          {fieldLabel('Description / instructions')}
+          <textarea
+            rows={4}
+            value={description}
+            onChange={e => setDescription(e.target.value)}
+            placeholder="What does this involve? Any notes on technique or approach."
+            className="w-full resize-none"
+          />
+        </div>
+      </Section>
+
+      {/* Section 2: Frequency */}
+      <Section title="FREQUENCY" subtitle="How often" isOpen={s2Open} onToggle={() => setS2Open(o => !o)}>
+        {FrequencyFields()}
+      </Section>
+
+      {/* Section 3: Services & Products */}
+      <Section title="SERVICES & PRODUCTS" subtitle="Costs and what you use" isOpen={s3Open} onToggle={() => setS3Open(o => !o)}>
+        {ServicesAndProductsSection()}
+      </Section>
+
+      {/* Section 4: Reminders & Prep */}
+      <Section title="REMINDERS & PREP" subtitle="Prompts and preparation" isOpen={s4Open} onToggle={() => setS4Open(o => !o)}>
+        {RemindersAndPrepSection()}
+      </Section>
+
+      {/* Actions */}
       <div className="flex gap-3 pt-2">
         <button type="button" onClick={() => router.back()} className="flex-1 border border-glow-border text-warm-mid text-sm rounded-pill py-2.5 hover:bg-taupe transition-colors">Cancel</button>
         <button
@@ -1202,5 +1385,6 @@ export default function TaskForm({
         </button>
       )}
     </form>
+    </>
   );
 }

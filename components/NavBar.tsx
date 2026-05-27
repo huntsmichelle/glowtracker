@@ -63,38 +63,48 @@ export default function NavBar() {
     <>
       {/* ── Desktop sidebar ──────────────────────────────────── */}
       <nav className="hidden lg:flex fixed left-0 top-0 h-screen w-[240px] flex-col bg-stone border-r border-glow-border z-20">
-        <div className="flex-1 p-6 space-y-8">
+        <div className="flex-1 px-5 pt-7 pb-4 space-y-8">
           {/* Logo */}
           <Link href="/" className="block">
-            <h1 className="font-display text-xl text-charcoal tracking-tight">GlowLoop</h1>
-            <p className="text-[10px] text-warm-light uppercase tracking-widest mt-0.5">Ritual Tracker</p>
+            <h1 style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '22px', color: '#2b2823', fontWeight: 400 }}>GlowLoop</h1>
+            <p style={{ fontSize: '9px', letterSpacing: '0.22em', color: '#a8a297', textTransform: 'uppercase', marginTop: '2px' }}>Ritual Tracker</p>
+            <p style={{ fontSize: '11px', color: '#a8a297', letterSpacing: '0.01em', marginTop: '2px', marginBottom: 0 }}>Your routine, on your schedule.</p>
           </Link>
 
           {/* Nav links */}
-          <div className="space-y-1">
-            <p className="label-overline mb-3">Navigate</p>
-            {navLinks.map(link => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
-                  isActive(link.href)
-                    ? 'bg-charcoal text-cream font-medium'
-                    : 'text-warm-mid hover:bg-taupe hover:text-charcoal'
-                }`}
-              >
-                {link.icon}
-                {link.label}
-              </Link>
-            ))}
+          <div className="space-y-0.5">
+            {navLinks.map(link => {
+              const active = isActive(link.href);
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '7px 12px', borderRadius: '6px', position: 'relative', textDecoration: 'none' }}
+                  className="transition-colors hover:bg-taupe"
+                >
+                  {active && (
+                    <div style={{
+                      position: 'absolute',
+                      left: 0,
+                      width: '3px',
+                      height: '16px',
+                      backgroundColor: '#8ea394',
+                      borderRadius: '0 2px 2px 0',
+                    }} />
+                  )}
+                  <span style={{ color: active ? '#2b2823' : '#6b665e' }}>{link.icon}</span>
+                  <span style={{ color: active ? '#2b2823' : '#6b665e', fontSize: '14px', fontWeight: active ? 500 : 400 }}>{link.label}</span>
+                </Link>
+              );
+            })}
           </div>
         </div>
 
         {/* Sign out — pinned to bottom */}
-        <div className="p-6 border-t border-glow-border">
+        <div className="px-5 py-5 border-t border-glow-border">
           <button
             onClick={handleSignOut}
-            className="text-xs text-warm-light hover:text-charcoal w-full text-left transition-colors"
+            className="text-xs text-warm-light hover:text-charcoal w-full text-left transition-colors cursor-pointer"
           >
             Sign out
           </button>

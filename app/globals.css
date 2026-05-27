@@ -118,10 +118,27 @@ h3, h4, h5, h6 {
   font-family: var(--font-body);
   font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--color-text-secondary);
+  color: #a8a297;
 }
+
+.hero-heading {
+  font-family: 'EB Garamond', 'Georgia', serif;
+  font-size: 44px;
+  line-height: 1.05;
+  color: #2b2823;
+  font-weight: 400;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.anim-hero { animation: fadeIn 200ms ease both; }
+.anim-card-1 { animation: fadeIn 250ms ease both; }
+.anim-card-2 { animation: fadeIn 300ms ease both; }
+.anim-card-3 { animation: fadeIn 350ms ease both; }
 
 .font-hand {
   font-family: var(--font-hand);

@@ -22,29 +22,6 @@ interface Props {
   userId: string;
 }
 
-type RoutineInfo = { id: string; name: string; color: string } | null;
-
-const ROUTINE_BADGE: React.CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  border: '1px solid #cdc6b6',
-  backgroundColor: '#f6f1e6',
-  color: '#6b665e',
-  borderRadius: '100px',
-  padding: '2px 10px',
-  fontSize: '11px',
-  fontWeight: 500,
-  letterSpacing: '0.03em',
-};
-
-const CARD_STYLE: React.CSSProperties = {
-  backgroundColor: '#f6f1e6',
-  border: '1px solid #cdc6b6',
-  borderRadius: '16px',
-  boxShadow: '0 1px 3px rgba(43,40,35,0.06)',
-  overflow: 'hidden',
-};
-
 function formatTime(hhmm: string): string {
   const [h, m] = hhmm.split(':').map(Number);
   const period = h < 12 ? 'AM' : 'PM';
@@ -52,9 +29,19 @@ function formatTime(hhmm: string): string {
   return m === 0 ? `${hour} ${period}` : `${hour}:${String(m).padStart(2, '0')} ${period}`;
 }
 
+function formatDateHeader(dateStr: string): string {
+  const d = parseISO(dateStr);
+  const todayStr = format(today(), 'yyyy-MM-dd');
+  if (dateStr === todayStr) return 'Today';
+  const tomorrow = new Date(today().getTime() + 86400000);
+  if (dateStr === format(tomorrow, 'yyyy-MM-dd')) return 'Tomorrow';
+  return format(d, 'EEEE · MMM d');
+}
+
 export default function HorizonClient({ instances: initial, userId }: Props) {
   const [instances, setInstances] = useState(initial);
   const [loading, setLoading]     = useState<string | null>(null);
+  const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
   // ── Modals ─────────────────────────────────────────────────────────────────
   const [completeModal, setCompleteModal] = useState<{ instance: InstanceWithTask } | null>(null);
@@ -141,25 +128,37 @@ export default function HorizonClient({ instances: initial, userId }: Props) {
     setLoading(null);
   }
 
-  // ── Grouping (by routine, no category sub-headers) ─────────────────────────
-
-  type RoutineGroup = { routine: RoutineInfo; items: InstanceWithTask[] };
-
-  function groupByRoutine(items: InstanceWithTask[]): RoutineGroup[] {
-    const map = new Map<string, RoutineGroup>();
+  // ── Deduplication — show only next-due instance per task series ────────────
+  function deduplicateByTask(items: InstanceWithTask[]): InstanceWithTask[] {
+    const byTask = new Map<string, InstanceWithTask[]>();
     for (const inst of items) {
-      const r    = (inst.task as unknown as { routine?: RoutineInfo }).routine ?? null;
-      const rKey = r?.id ?? '__none__';
-      if (!map.has(rKey)) map.set(rKey, { routine: r, items: [] });
-      map.get(rKey)!.items.push(inst);
+      if (!byTask.has(inst.task_id)) byTask.set(inst.task_id, []);
+      byTask.get(inst.task_id)!.push(inst);
+    }
+    const result: InstanceWithTask[] = [];
+    for (const [, taskInstances] of byTask) {
+      const sorted = [...taskInstances].sort((a, b) => a.due_date_start.localeCompare(b.due_date_start));
+      const earliest = sorted[0];
+      if (earliest.task?.frequency_type === 'twice_daily') {
+        result.push(...sorted.filter(i => i.due_date_start === earliest.due_date_start));
+      } else {
+        result.push(earliest);
+      }
+    }
+    return result.sort((a, b) => a.due_date_start.localeCompare(b.due_date_start));
+  }
+
+  // ── Date grouping ──────────────────────────────────────────────────────────
+  function groupByDate(items: InstanceWithTask[]): Array<{ dateStr: string; items: InstanceWithTask[] }> {
+    const map = new Map<string, InstanceWithTask[]>();
+    for (const inst of items) {
+      const key = inst.due_date_start;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(inst);
     }
     return [...map.entries()]
-      .sort(([ka], [kb]) => {
-        if (ka === '__none__') return 1;
-        if (kb === '__none__') return -1;
-        return 0;
-      })
-      .map(([, g]) => g);
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([dateStr, items]) => ({ dateStr, items }));
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -168,11 +167,13 @@ export default function HorizonClient({ instances: initial, userId }: Props) {
     return (
       <div className="space-y-6">
         <PageHeader />
-        <div className="text-center py-20">
-          <p className="font-display text-2xl text-charcoal mb-2">Clear horizon.</p>
-          <p className="text-warm-mid text-sm mb-8">No rituals coming up. Add one to get started.</p>
-          <Link href="/tasks/new" className="inline-block bg-charcoal text-cream text-sm font-medium rounded-pill px-6 py-3 hover:bg-charcoal/90">
-            + Add Ritual
+        <div className="flex flex-col items-center justify-center py-12 gap-3">
+          <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontStyle: 'italic', fontSize: '22px', color: '#2b2823' }}>
+            Clear horizon.
+          </p>
+          <div style={{ width: '40px', height: '1px', backgroundColor: '#cdc6b6' }} />
+          <Link href="/tasks/new" style={{ fontSize: '10px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#a8a297', cursor: 'pointer' }}>
+            Add your first ritual
           </Link>
         </div>
         {Modals()}
@@ -180,137 +181,135 @@ export default function HorizonClient({ instances: initial, userId }: Props) {
     );
   }
 
-  const groups = groupByRoutine(instances);
+  const deduplicated = deduplicateByTask(instances);
+  const dateGroups = groupByDate(deduplicated);
+  const todayStr = format(today(), 'yyyy-MM-dd');
 
   return (
     <div className="space-y-6">
       <PageHeader />
 
-      <div className="space-y-4">
-        {groups.map(({ routine, items }) => (
-          <div key={routine?.id ?? '__none__'} style={CARD_STYLE}>
-            {/* Group header */}
-            <div className="px-5 py-3.5 border-b" style={{ borderColor: '#cdc6b6' }}>
-              {routine ? (
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: routine.color }} />
-                  <Link href={`/routines/${routine.id}`}>
-                    <span style={ROUTINE_BADGE}>{routine.name}</span>
-                  </Link>
-                </div>
-              ) : (
-                <p className="label-overline">Individual Rituals</p>
-              )}
+      <div className="space-y-6">
+        {dateGroups.map(({ dateStr, items }, groupIdx) => (
+          <div key={dateStr}>
+            {/* Date header */}
+            <div style={{ paddingTop: groupIdx === 0 ? '4px' : '24px', paddingBottom: '8px', borderBottom: '1px solid #cdc6b6', marginBottom: '4px' }}>
+              <span style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '16px', fontWeight: 500, color: '#000000', letterSpacing: '0.01em' }}>
+                {formatDateHeader(dateStr)}
+              </span>
             </div>
 
-            {/* Instance rows */}
-            {items.map((inst, idx) => {
-              const status      = deriveStatus(inst);
+            {/* Rows for this date */}
+            {items.map(inst => {
+              const status       = deriveStatus(inst);
+              const isToday      = dateStr === todayStr;
+              const isDue        = status === 'due';
               const categoryColor = getCategoryColor(inst.task?.category?.name ?? '').dot;
-              const prepNote    = inst.task?.reminder_notes ?? inst.task?.description ?? null;
-              const isLoading   = loading === inst.id;
-              const dateLabel   = format(parseISO(inst.due_date_start), 'MMM d');
+              const isExpanded   = expandedRow === inst.id;
+              const isLoading    = loading === inst.id;
+              const routine      = (inst.task as unknown as { routine?: { id: string; name: string; color: string } | null }).routine ?? null;
+              const prepNote     = inst.task?.reminder_notes ?? inst.task?.description ?? null;
 
               return (
-                <div
-                  key={inst.id}
-                  className={idx > 0 ? 'border-t' : ''}
-                  style={{ borderColor: '#cdc6b6' }}
-                >
-                  {/* Top row: date | info | circle+pass */}
-                  <div className="flex gap-3 px-5 pt-3.5 pb-1">
-                    {/* Date column */}
-                    <div className="w-[52px] flex-shrink-0 pt-0.5">
-                      <p className="text-[11px] text-warm-light font-mono">{dateLabel}</p>
-                      {inst.scheduled_time && (
-                        <p className="text-[10px] text-warm-light mt-0.5">{formatTime(inst.scheduled_time)}</p>
-                      )}
-                    </div>
+                <div key={inst.id} style={{ borderBottom: '1px solid #cdc6b6' }}>
+                  {/* Default row */}
+                  <div
+                    style={{ display: 'flex', alignItems: 'center', padding: '12px 0', gap: '10px', cursor: 'pointer' }}
+                    onClick={() => setExpandedRow(isExpanded ? null : inst.id)}
+                  >
+                    {/* Sage dot */}
+                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: categoryColor, flexShrink: 0 }} />
 
                     {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      <Link href={`/instances/${inst.id}`} className="block">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: categoryColor }} />
-                          <p className="text-sm font-medium text-charcoal truncate">{inst.task?.name}</p>
-                          {status === 'due' && (
-                            <span className="flex-shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-full"
-                              style={{ backgroundColor: 'rgba(142,163,148,0.15)', border: '1px solid #8ea394', color: '#2b2823' }}>
-                              NOW
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-warm-mid mt-0.5 truncate">
-                          {inst.task?.category?.name ?? ''}
-                          {prepNote ? ` · ${prepNote.slice(0, 32)}${prepNote.length > 32 ? '…' : ''}` : ''}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <p style={{ fontSize: '14px', fontWeight: 500, color: '#2b2823', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {inst.task?.name}
                         </p>
-                      </Link>
+                        {isDue && (
+                          <span style={{ fontSize: '10px', fontWeight: 600, color: '#8ea394', flexShrink: 0 }}>NOW</span>
+                        )}
+                      </div>
+                      <p style={{ fontSize: '10px', letterSpacing: '0.14em', textTransform: 'uppercase', color: '#a8a297', marginTop: '1px' }}>
+                        {inst.task?.category?.name ?? ''}
+                        {inst.scheduled_time && ` · ${formatTime(inst.scheduled_time)}`}
+                      </p>
                     </div>
 
-                    {/* Circle + Pass */}
-                    <div className="flex flex-col items-end gap-1 flex-shrink-0 pt-0.5">
+                    {/* Right action */}
+                    {isToday || isDue ? (
                       <button
-                        onClick={() => openCompleteModal(inst)}
+                        onClick={e => { e.stopPropagation(); openCompleteModal(inst); }}
                         disabled={isLoading}
-                        className="w-5 h-5 rounded-full transition-colors disabled:opacity-40"
-                        style={{ border: '1.5px solid #cdc6b6' }}
+                        style={{ width: '20px', height: '20px', borderRadius: '50%', border: '1.5px solid #cdc6b6', backgroundColor: 'transparent', flexShrink: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                         aria-label="Mark kept"
                       />
-                      <span
-                        role="button"
-                        onClick={() => !isLoading && handleSkip(inst)}
-                        className="text-[10px] cursor-pointer select-none"
-                        style={{ color: '#a8a297' }}
-                        onMouseEnter={e => (e.currentTarget.style.color = '#6b665e')}
-                        onMouseLeave={e => (e.currentTarget.style.color = '#a8a297')}
-                      >
-                        Pass
-                      </span>
-                    </div>
+                    ) : (
+                      <span style={{ fontSize: '14px', color: '#a8a297', flexShrink: 0 }}>›</span>
+                    )}
                   </div>
 
-                  {/* Action buttons row */}
-                  <div className="flex flex-wrap gap-1.5 px-5 pb-3.5 pt-1">
-                    <button
-                      onClick={() => openCompleteModal(inst)}
-                      disabled={isLoading}
-                      className="text-xs font-medium px-2.5 py-1.5 rounded-md bg-charcoal text-cream hover:bg-charcoal/90 disabled:opacity-50"
-                    >
-                      Kept
-                    </button>
-                    <button
-                      onClick={() => !isLoading && handleSkip(inst)}
-                      disabled={isLoading}
-                      className="text-xs font-medium px-2.5 py-1.5 rounded-md text-warm-mid hover:text-charcoal disabled:opacity-50"
-                      style={{ backgroundColor: '#ede8db' }}
-                    >
-                      Pass
-                    </button>
-                    <button
-                      onClick={() => { setSnoozeDays(3); setSnoozeModal({ instance: inst }); }}
-                      disabled={isLoading}
-                      className="text-xs font-medium px-2.5 py-1.5 rounded-md text-warm-mid hover:text-charcoal disabled:opacity-50"
-                      style={{ backgroundColor: '#ede8db' }}
-                    >
-                      Nudge
-                    </button>
-                    <button
-                      onClick={() => openAdjustModal(inst)}
-                      disabled={isLoading}
-                      className="text-xs font-medium px-2.5 py-1.5 rounded-md text-warm-mid hover:text-charcoal disabled:opacity-50"
-                      style={{ backgroundColor: '#ede8db' }}
-                    >
-                      Adjust for event
-                    </button>
-                    <button
-                      onClick={() => setDeleteModal({ instance: inst })}
-                      disabled={isLoading}
-                      className="text-xs font-medium px-2.5 py-1.5 rounded-md text-warm-mid hover:text-charcoal disabled:opacity-50"
-                      style={{ backgroundColor: '#e8c9b8' }}
-                    >
-                      Delete
-                    </button>
-                  </div>
+                  {/* Expanded state */}
+                  {isExpanded && (
+                    <div style={{ paddingBottom: '12px', paddingLeft: '16px' }}>
+                      {prepNote && (
+                        <p style={{ fontSize: '12px', color: '#6b665e', marginBottom: '8px' }}>
+                          {prepNote.slice(0, 80)}{prepNote.length > 80 ? '…' : ''}
+                        </p>
+                      )}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                        <button
+                          onClick={() => openCompleteModal(inst)}
+                          disabled={isLoading}
+                          style={{ fontSize: '11px', color: '#6b665e', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                        >
+                          Keep
+                        </button>
+                        <button
+                          onClick={() => !isLoading && handleSkip(inst)}
+                          disabled={isLoading}
+                          style={{ fontSize: '11px', color: '#6b665e', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                        >
+                          Pass
+                        </button>
+                        <button
+                          onClick={() => { setSnoozeDays(3); setSnoozeModal({ instance: inst }); }}
+                          disabled={isLoading}
+                          style={{ fontSize: '11px', color: '#6b665e', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                        >
+                          Defer
+                        </button>
+                        <button
+                          onClick={() => openAdjustModal(inst)}
+                          disabled={isLoading}
+                          style={{ fontSize: '11px', color: '#6b665e', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                        >
+                          Adjust for event
+                        </button>
+                        <Link
+                          href={`/instances/${inst.id}`}
+                          style={{ fontSize: '11px', color: '#6b665e', textDecoration: 'none' }}
+                        >
+                          Details
+                        </Link>
+                        <button
+                          onClick={() => setDeleteModal({ instance: inst })}
+                          disabled={isLoading}
+                          style={{ fontSize: '11px', color: '#a8a297', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                      {routine && (
+                        <div style={{ marginTop: '8px' }}>
+                          <Link href={`/routines/${routine.id}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#6b665e', textDecoration: 'none', border: '1px solid #cdc6b6', borderRadius: '100px', padding: '2px 10px', backgroundColor: '#f6f1e6' }}>
+                            <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: routine.color, display: 'inline-block' }} />
+                            {routine.name}
+                          </Link>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -356,16 +355,16 @@ export default function HorizonClient({ instances: initial, userId }: Props) {
         {/* Snooze modal */}
         {snoozeModal && (
           <Modal onClose={() => setSnoozeModal(null)}>
-            <p className="label-overline mb-4">Nudge</p>
+            <p className="label-overline mb-4">Defer</p>
             <p className="text-sm text-warm-mid mb-4">{snoozeModal.instance.task?.name}</p>
-            <label className="block text-xs font-medium text-warm-mid uppercase tracking-wide mb-1.5">Days to nudge forward</label>
+            <label className="block text-xs font-medium text-warm-mid uppercase tracking-wide mb-1.5">Days to defer forward</label>
             <input type="number" min={1} max={30} value={snoozeDays}
               onChange={e => setSnoozeDays(Number(e.target.value))} className="w-full mb-5" />
             <div className="flex gap-2">
               <button onClick={() => setSnoozeModal(null)} className="flex-1 border border-glow-border text-warm-mid text-sm rounded-pill py-2.5 hover:bg-taupe">Cancel</button>
               <button onClick={() => handleSnooze(snoozeModal.instance)} disabled={loading === snoozeModal.instance.id}
                 className="flex-1 bg-charcoal text-cream text-sm font-medium rounded-pill py-2.5 disabled:opacity-50">
-                {loading === snoozeModal.instance.id ? 'Saving…' : 'Nudge'}
+                {loading === snoozeModal.instance.id ? 'Saving…' : 'Defer'}
               </button>
             </div>
           </Modal>
@@ -447,19 +446,17 @@ export default function HorizonClient({ instances: initial, userId }: Props) {
     );
   }
 
-  // ── Sub-components ─────────────────────────────────────────────────────────
-
   function PageHeader() {
     return (
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="label-overline mb-1">Looking ahead</p>
           <h1 className="font-display text-3xl text-charcoal">Coming up</h1>
-          <p className="text-sm text-warm-mid mt-1">All your rituals, looking ahead.</p>
+          <p className="text-sm text-warm-mid mt-1">Your rituals on the horizon.</p>
         </div>
         <Link
           href="/tasks/new"
-          className="flex-shrink-0 bg-charcoal text-cream text-sm font-medium rounded-pill px-4 py-2 hover:bg-charcoal/90"
+          style={{ flexShrink: 0, border: '1px solid #2b2823', backgroundColor: 'transparent', color: '#2b2823', fontSize: '13px', fontWeight: 500, borderRadius: '100px', padding: '6px 16px', textDecoration: 'none' }}
         >
           + Add ritual
         </Link>

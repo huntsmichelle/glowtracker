@@ -1,10 +1,11 @@
 import { createClient } from '@/lib/supabase/server';
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, differenceInDays, subDays } from 'date-fns';
 import type { Task, Instance, Category } from '@/types';
-import { deriveStatus } from '@/lib/instanceEngine';
+import { deriveStatus, today } from '@/lib/instanceEngine';
 import { getCategoryColor } from '@/lib/categoryColors';
+import StubPeriodPrompt from '@/components/StubPeriodPrompt';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,6 +37,24 @@ export default async function TaskDetailPage({ params }: Props) {
 
   const t = task as Task & { category?: Category };
 
+  // Stub period: gap between anchor date and the first scheduled (non-stub) instance
+  const nonStubInstances = (instances ?? []).filter((i: Instance) => !i.is_stub_instance);
+  const futureNonStub = nonStubInstances
+    .filter((i: Instance) => ['upcoming', 'due'].includes(i.status ?? '') || i.status === 'upcoming')
+    .sort((a: Instance, b: Instance) => a.due_date_start.localeCompare(b.due_date_start));
+  const firstInstance = futureNonStub[0] as Instance | undefined;
+  const anchorDate = t.initial_anchor_date ?? format(today(), 'yyyy-MM-dd');
+  const stubPeriodDays = firstInstance
+    ? differenceInDays(parseISO(firstInstance.due_date_start), parseISO(anchorDate))
+    : 0;
+  const hasStubPeriod =
+    stubPeriodDays > 0 &&
+    stubPeriodDays < t.interval_min_days &&
+    !nonStubInstances.some((i: Instance) => i.is_stub_instance);
+  const stubMaxDate = firstInstance
+    ? format(subDays(parseISO(firstInstance.due_date_start), 1), 'yyyy-MM-dd')
+    : anchorDate;
+
   const intervalLabel =
     t.interval_min_days === t.interval_max_days
       ? `Every ${t.interval_min_days} days`
@@ -54,7 +73,7 @@ export default async function TaskDetailPage({ params }: Props) {
     due:       'Ready',
     completed: 'Kept',
     skipped:   'Passed',
-    snoozed:   'Nudged',
+    snoozed:   'Deferred',
   };
 
   return (
@@ -97,6 +116,17 @@ export default async function TaskDetailPage({ params }: Props) {
         </div>
       )}
 
+      {/* Stub period prompt */}
+      {hasStubPeriod && (
+        <StubPeriodPrompt
+          taskId={id}
+          userId={user.id}
+          stubPeriodDays={stubPeriodDays}
+          anchorDate={anchorDate}
+          maxDate={stubMaxDate}
+        />
+      )}
+
       {/* Instance history */}
       <div>
         <p className="label-overline mb-3">
@@ -124,6 +154,9 @@ export default async function TaskDetailPage({ params }: Props) {
                         <>, {format(parseISO(instance.due_date_start), 'yyyy')}</>
                       )}
                     </p>
+                    {instance.is_stub_instance && (
+                      <p className="text-xs text-warm-light italic">Added appointment</p>
+                    )}
                     {instance.actual_completion_date && (
                       <p className="text-xs text-warm-light">
                         Kept {format(parseISO(instance.actual_completion_date), 'MMM d, yyyy')}

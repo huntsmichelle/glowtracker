@@ -57,21 +57,24 @@ function spellOut(n: number): string {
   return n >= 0 && n <= 9 ? ONES[n] : String(n);
 }
 
-function getEditorialGreeting(ritualCount: number, dueCount: number, name: string | null | undefined): string {
-  const h = new Date().getHours();
-  const firstName = name?.split(' ')[0] ?? null;
-  const nameStr = firstName ? `, ${firstName}` : '';
-
-  if (h < 12) {
-    if (ritualCount === 0) return `Good morning${nameStr}. Nothing urgent today.`;
-    return `Good morning${nameStr}, ${spellOut(ritualCount)} small act${ritualCount !== 1 ? 's' : ''} today.`;
+function getEditorialGreeting(ritualCount: number): string {
+  const hour = new Date().getHours();
+  const words = ['zero','one','two','three','four','five','six','seven','eight','nine'];
+  const countWord = ritualCount <= 9 ? words[ritualCount] : String(ritualCount);
+  const ritualWord = ritualCount === 1 ? 'act' : 'acts';
+  if (hour < 12) {
+    return ritualCount === 0
+      ? 'A quiet morning ahead.'
+      : `A quiet morning, ${countWord} small ${ritualWord}.`;
   }
-  if (h < 17) {
-    if (dueCount > 0) return `${spellOut(dueCount)} ritual${dueCount !== 1 ? 's' : ''} waiting, ${firstName ?? 'you'}.`;
-    return `Good afternoon${nameStr}, you're in rhythm.`;
+  if (hour < 17) {
+    return ritualCount === 0
+      ? 'In rhythm this afternoon.'
+      : `Good afternoon, ${countWord} ${ritualCount === 1 ? 'ritual' : 'rituals'} today.`;
   }
-  if (ritualCount > 0) return `An evening to tend to things${nameStr}.`;
-  return `A still evening${nameStr}.`;
+  return ritualCount === 0
+    ? 'Winding down — all tended to.'
+    : `An evening to tend to things, ${countWord} ${ritualCount === 1 ? 'ritual' : 'rituals'} left.`;
 }
 
 function getDateOverline(): string {
@@ -536,7 +539,7 @@ export default function DashboardClient({
             disabled={isLoading}
             className="flex-1 min-w-[60px] min-h-[44px] bg-dust-lt hover:bg-dust/20 text-charcoal text-xs font-medium rounded-md px-2 disabled:opacity-50"
           >
-            Nudge
+            Defer
           </button>
           <button
             onClick={e => { e.stopPropagation(); openAdjustModal(instance); }}
@@ -576,7 +579,7 @@ export default function DashboardClient({
               <div className="flex gap-1.5">
                 <button onClick={e => { e.stopPropagation(); openCompleteModal(slot); }} disabled={isLoading} className="flex-1 min-h-[36px] bg-charcoal text-cream text-xs font-medium rounded-md px-2 disabled:opacity-50 hover:bg-charcoal/90">Kept</button>
                 <button onClick={e => { e.stopPropagation(); handleSkip(slot); }} disabled={isLoading} className="flex-1 min-h-[36px] bg-taupe text-warm-mid text-xs font-medium rounded-md px-2 disabled:opacity-50 hover:bg-glow-border">Pass</button>
-                <button onClick={e => { e.stopPropagation(); setSnoozeDays(3); setSnoozeModal({ instance: slot }); }} disabled={isLoading} className="flex-1 min-h-[36px] bg-dust-lt text-charcoal text-xs font-medium rounded-md px-2 disabled:opacity-50 hover:bg-dust/20">Nudge</button>
+                <button onClick={e => { e.stopPropagation(); setSnoozeDays(3); setSnoozeModal({ instance: slot }); }} disabled={isLoading} className="flex-1 min-h-[36px] bg-dust-lt text-charcoal text-xs font-medium rounded-md px-2 disabled:opacity-50 hover:bg-dust/20">Defer</button>
               </div>
             </div>
           ))}
@@ -1125,16 +1128,16 @@ export default function DashboardClient({
     const { instance } = snoozeModal;
     return (
       <Modal onClose={() => setSnoozeModal(null)}>
-        <p className="label-overline mb-4">Nudge</p>
+        <p className="label-overline mb-4">Defer</p>
         <p className="text-sm text-warm-mid mb-4">{instance.task?.name}</p>
-        <label className="block text-xs font-medium text-warm-mid uppercase tracking-wide mb-1.5">Days to nudge forward</label>
+        <label className="block text-xs font-medium text-warm-mid uppercase tracking-wide mb-1.5">Days to defer forward</label>
         <input type="number" min={1} max={30} value={snoozeDays}
           onChange={e => setSnoozeDays(Number(e.target.value))} className="w-full mb-5" />
         <div className="flex gap-2">
           <button onClick={() => setSnoozeModal(null)} className="flex-1 border border-glow-border text-warm-mid text-sm rounded-pill py-2.5 hover:bg-taupe">Cancel</button>
           <button onClick={() => handleSnooze(instance)} disabled={loading === instance.id}
             className="flex-1 bg-charcoal text-cream text-sm font-medium rounded-pill py-2.5 disabled:opacity-50 hover:bg-charcoal/90">
-            {loading === instance.id ? 'Saving…' : 'Nudge'}
+            {loading === instance.id ? 'Saving…' : 'Defer'}
           </button>
         </div>
       </Modal>
@@ -1232,13 +1235,22 @@ export default function DashboardClient({
 
   function InSequenceList() {
     if (instances.length === 0) {
+      const nextApproaching = approaching[0] ?? null;
       return (
-        <div className="flex flex-col items-center justify-center h-full py-16 px-5 text-center">
-          <p className="font-display text-xl text-charcoal mb-1">All tended to.</p>
-          <p className="text-xs text-warm-light">No rituals due today.</p>
-          <Link href="/tasks/new" className="mt-6 text-xs bg-charcoal text-cream font-medium rounded-pill px-4 py-2 hover:bg-charcoal/90">
-            + Add ritual
-          </Link>
+        <div className="flex flex-col items-center justify-center h-full py-12 px-5 gap-3 text-center">
+          <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontStyle: 'italic', fontSize: '22px', color: '#2b2823' }}>
+            All tended to.
+          </p>
+          <div style={{ width: '40px', height: '1px', backgroundColor: '#cdc6b6' }} />
+          {nextApproaching ? (
+            <p style={{ fontSize: '10px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#a8a297' }}>
+              Next: {nextApproaching.task?.name ?? '—'} · {format(parseISO(nextApproaching.due_date_start), 'MMM d')}
+            </p>
+          ) : (
+            <p style={{ fontSize: '10px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#a8a297' }}>
+              Nothing due today.
+            </p>
+          )}
         </div>
       );
     }
@@ -1284,7 +1296,7 @@ export default function DashboardClient({
           return (
             <div
               key={instance.id}
-              className={`flex items-center gap-3 px-5 py-3.5 border-b border-glow-border last:border-b-0 ${isNow ? 'bg-cream/40' : ''}`}
+              className={`flex items-center gap-3 px-5 py-3 border-b border-glow-border last:border-b-0 ${isNow ? 'bg-cream/40' : ''}`}
             >
               {/* Date / NOW */}
               <div className="w-[52px] flex-shrink-0 flex justify-center">
@@ -1296,14 +1308,14 @@ export default function DashboardClient({
                     NOW
                   </span>
                 ) : (
-                  <span className={`text-[11px] ${isOverdue ? 'text-dust font-medium' : 'text-warm-light'}`}>
+                  <span className={`text-[11px] font-mono ${isOverdue ? 'text-dust font-medium' : 'text-warm-light'}`}>
                     {dateLabel}
                   </span>
                 )}
               </div>
 
               {/* Name + meta */}
-              <Link href={`/instances/${instance.id}`} className="flex-1 min-w-0">
+              <Link href={`/instances/${instance.id}`} className="flex-1 min-w-0 block">
                 <p className="text-sm font-medium text-charcoal truncate">{instance.task?.name}</p>
                 <p className="text-[11px] text-warm-light mt-0.5 truncate">
                   {instance.task?.category?.name ?? ''}
@@ -1311,28 +1323,39 @@ export default function DashboardClient({
                 </p>
               </Link>
 
-              {/* Circle + Pass */}
-              <div className="flex-shrink-0 flex flex-col items-center gap-1">
+              {/* ✓ keep + ✕ pass */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                 <button
                   onClick={instantKeep}
                   disabled={isLoadingThis}
                   title="Mark kept"
-                  className="w-7 h-7 rounded-full border-[1.5px] border-glow-border hover:border-sage hover:bg-sage/10 transition-colors disabled:opacity-40 flex items-center justify-center text-warm-light hover:text-sage"
+                  style={{
+                    width: '28px', height: '28px', borderRadius: '50%',
+                    border: '1.5px solid #cdc6b6', backgroundColor: 'transparent',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: 'pointer', color: '#a8a297', transition: 'all 0.15s ease',
+                    fontSize: '13px', opacity: isLoadingThis ? 0.4 : 1,
+                  }}
+                  onMouseEnter={e => { if (!isLoadingThis) { e.currentTarget.style.borderColor = '#8ea394'; e.currentTarget.style.color = '#8ea394'; } }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = '#cdc6b6'; e.currentTarget.style.color = '#a8a297'; }}
                 >
-                  {isLoadingThis ? (
-                    <span className="text-[10px]">…</span>
-                  ) : (
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                  )}
+                  {isLoadingThis ? '…' : '✓'}
                 </button>
                 <button
                   onClick={instantPass}
                   disabled={isLoadingThis}
-                  className="text-[10px] text-warm-light hover:text-charcoal transition-colors disabled:opacity-40 leading-none"
+                  title="Pass"
+                  style={{
+                    width: '20px', height: '20px', borderRadius: '50%',
+                    border: 'none', backgroundColor: 'transparent',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: 'pointer', color: '#cdc6b6', fontSize: '14px',
+                    transition: 'color 0.15s ease', opacity: isLoadingThis ? 0.4 : 1,
+                  }}
+                  onMouseEnter={e => { if (!isLoadingThis) e.currentTarget.style.color = '#a8a297'; }}
+                  onMouseLeave={e => { e.currentTarget.style.color = '#cdc6b6'; }}
                 >
-                  Pass
+                  ✕
                 </button>
               </div>
             </div>
@@ -1364,59 +1387,76 @@ export default function DashboardClient({
     const streak = computeStreak(heatmapDates);
 
     return (
-      <div className="space-y-5">
-        {/* Monthly calendar heatmap */}
+      <div className="space-y-4">
+        {/* Full month calendar */}
         <div>
-          <p className="text-[11px] font-medium text-charcoal mb-2">{monthLabel}</p>
-          <div className="grid grid-cols-7 gap-[3px] mb-1">
+          <p style={{ fontSize: '12px', color: '#6b665e', marginBottom: '12px' }}>{monthLabel}</p>
+          {/* Day-of-week headers */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', marginBottom: '4px' }}>
             {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, idx) => (
-              <div key={idx} className="text-center text-[9px] text-warm-light py-0.5">{d}</div>
+              <div key={idx} style={{ textAlign: 'center', fontSize: '10px', color: '#a8a297', paddingBottom: '2px' }}>{d}</div>
             ))}
           </div>
-          <div className="grid grid-cols-7 gap-[3px]">
+          {/* Calendar grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
             {cells.map((day, idx) => {
-              if (!day) return <div key={idx} className="aspect-square" />;
+              if (!day) return <div key={idx} style={{ aspectRatio: '1' }} />;
               const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-              const has = completedSet.has(dateStr);
+              const isCompleted = completedSet.has(dateStr);
               const isToday = dateStr === todayStr;
-              const isPast = dateStr < todayStr;
+              const isFuture = dateStr > todayStr;
+
+              let bg = '#e8e2d5';
+              let color = '#6b665e';
+              let fontWeight: number | string = 400;
+
+              if (isCompleted) { bg = '#2b2823'; color = '#f6f1e6'; }
+              else if (isToday) { bg = '#8ea394'; color = '#f6f1e6'; fontWeight = 500; }
+              else if (isFuture) { bg = '#ede8df'; color = '#a8a297'; }
+
               return (
                 <div
                   key={idx}
                   title={dateStr}
-                  className="aspect-square rounded-sm flex items-center justify-center"
                   style={{
-                    backgroundColor: has ? '#8ea394' : isPast ? '#cdc6b6' : isToday ? '#ede8db' : 'transparent',
-                    border: isToday ? '1px solid #a8a297' : 'none',
-                    opacity: has ? 1 : isPast ? 0.4 : isToday ? 1 : 0.25,
+                    aspectRatio: '1',
+                    borderRadius: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: bg,
                   }}
                 >
-                  <span style={{ fontSize: '9px', color: has ? '#efe9dd' : isToday ? '#2b2823' : '#6b665e' }}>
-                    {day}
-                  </span>
+                  <span style={{ fontSize: '13px', color, fontWeight, lineHeight: 1 }}>{day}</span>
                 </div>
               );
             })}
           </div>
         </div>
 
-        {/* Stats row */}
-        <div className="grid grid-cols-3 gap-3 pt-4 border-t border-glow-border">
+        {/* Stats — three-box grid */}
+        <div className="grid grid-cols-3 gap-3 pt-2 border-t border-glow-border">
           <div className="text-center">
-            <p className="font-display text-xl text-charcoal">{keptPct != null ? `${keptPct}%` : '—'}</p>
-            <p className="text-[10px] text-warm-light mt-0.5">kept</p>
+            <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '22px', color: '#2b2823', fontWeight: 400, lineHeight: 1 }}>
+              {keptPct != null ? `${keptPct}%` : '—'}
+            </p>
+            <p style={{ fontSize: '10px', color: '#a8a297', marginTop: '3px', letterSpacing: '0.06em' }}>kept</p>
           </div>
           <div className="text-center">
-            <p className="font-display text-xl text-charcoal">{streak}</p>
-            <p className="text-[10px] text-warm-light mt-0.5">streak</p>
+            <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '22px', color: '#2b2823', fontWeight: 400, lineHeight: 1 }}>
+              {streak}
+            </p>
+            <p style={{ fontSize: '10px', color: '#a8a297', marginTop: '3px', letterSpacing: '0.06em' }}>day streak</p>
           </div>
           <div className="text-center">
-            <p className="font-display text-xl text-charcoal">{due.length}</p>
-            <p className="text-[10px] text-warm-light mt-0.5">refresh</p>
+            <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '22px', color: '#c08a6e', fontWeight: 400, lineHeight: 1 }}>
+              {due.length}
+            </p>
+            <p style={{ fontSize: '10px', color: '#a8a297', marginTop: '3px', letterSpacing: '0.06em' }}>refresh</p>
           </div>
         </div>
 
-        {/* Approaching — prose sentences */}
+        {/* Approaching */}
         {approaching.length > 0 && (
           <div className="pt-4 border-t border-glow-border">
             <p className="label-overline mb-2">Coming up</p>
@@ -1527,7 +1567,7 @@ export default function DashboardClient({
   // ROOT RENDER
   // ─────────────────────────────────────────────────────────────────────────
 
-  const greeting = getEditorialGreeting(instances.length, due.length, displayName);
+  const greeting = getEditorialGreeting(instances.length);
   const dateOverline = getDateOverline();
   const totalConflicts = Object.values(conflictCounts).reduce((s, n) => s + n, 0);
 
@@ -1606,8 +1646,16 @@ export default function DashboardClient({
                 See all →
               </Link>
             </div>
-            <div className="flex-1 flex items-center justify-center px-5 py-4">
-              <p className="text-sm text-warm-light">Your shelf is stocked.</p>
+            <div className="flex-1 flex items-center justify-center">
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px', padding: '24px', textAlign: 'center' }}>
+                <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontStyle: 'italic', fontSize: '20px', color: '#2b2823' }}>
+                  Product tracking coming soon.
+                </p>
+                <div style={{ width: '40px', height: '1px', backgroundColor: '#cdc6b6' }} />
+                <p style={{ fontSize: '10px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#a8a297' }}>
+                  Your shelf will live here
+                </p>
+              </div>
             </div>
           </div>
 

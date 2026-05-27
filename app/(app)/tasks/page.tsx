@@ -8,6 +8,19 @@ export const dynamic = 'force-dynamic';
 
 type TaskRow = Task & { category?: Category; routine?: Pick<Routine, 'id' | 'name' | 'color'> | null };
 
+function humanizeInterval(min: number, max: number): string {
+  if (min === max) {
+    if (min === 1) return 'Daily';
+    if (min === 7) return 'Weekly';
+    if (min === 14) return 'Every 2 weeks';
+    if (min === 30 || min === 31) return 'Monthly';
+    if (min % 7 === 0) return `Every ${min / 7} weeks`;
+    return `Every ${min} days`;
+  }
+  if (min % 7 === 0 && max % 7 === 0) return `Every ${min / 7}–${max / 7} weeks`;
+  return `Every ${min}–${max} days`;
+}
+
 export default async function TasksListPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -45,47 +58,45 @@ export default async function TasksListPage() {
           <p className="label-overline mb-1">Library</p>
           <h1 className="font-display text-3xl text-charcoal">Rituals</h1>
           {total > 0 && (
-            <p className="text-warm-mid text-sm mt-1">{total} ritual{total !== 1 ? 's' : ''} in your library</p>
+            <p className="text-warm-mid text-sm mt-1">{total} ritual{total !== 1 ? 's' : ''}</p>
           )}
         </div>
         <Link
           href="/tasks/new"
-          className="bg-charcoal text-cream text-sm font-medium rounded-pill px-5 py-2.5 hover:bg-charcoal/90"
+          style={{ border: '1px solid #2b2823', backgroundColor: 'transparent', color: '#2b2823', fontSize: '13px', fontWeight: 500, borderRadius: '100px', padding: '7px 20px', textDecoration: 'none' }}
         >
           + Add Ritual
         </Link>
       </div>
 
       {total === 0 ? (
-        <div className="text-center py-20">
-          <div className="w-10 h-10 mx-auto mb-4 text-warm-light">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zM12 6v6l4 2" />
-            </svg>
-          </div>
-          <h2 className="font-display text-2xl text-charcoal mb-2">Your shelf is quiet.</h2>
-          <p className="text-warm-mid text-sm mb-8">Add your first ritual to begin keeping rhythm.</p>
-          <Link
-            href="/tasks/new"
-            className="inline-block bg-charcoal text-cream text-sm font-medium rounded-pill px-6 py-3 hover:bg-charcoal/90"
-          >
-            + Add Ritual
+        <div className="flex flex-col items-center justify-center py-12 gap-3">
+          <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontStyle: 'italic', fontSize: '22px', color: '#2b2823' }}>
+            No rituals yet.
+          </p>
+          <div style={{ width: '40px', height: '1px', backgroundColor: '#cdc6b6' }} />
+          <Link href="/tasks/new" style={{ fontSize: '10px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#a8a297', cursor: 'pointer' }}>
+            Add your first ritual
           </Link>
         </div>
       ) : (
         <div className="space-y-8">
           {sortedGroups.map(([catName, items]) => (
             <section key={catName}>
-              <p className="label-overline mb-3">{catName}</p>
-              <div className="space-y-2">
+              <p className="label-overline mb-3" style={{ letterSpacing: '0.18em' }}>
+                {catName.toUpperCase()} · {items.length}
+              </p>
+              <div style={{ borderTop: '1px solid #cdc6b6' }}>
                 {items.map(t => <TaskRowItem key={t.id} task={t} />)}
               </div>
             </section>
           ))}
           {uncategorized.length > 0 && (
             <section>
-              <p className="label-overline mb-3">Other</p>
-              <div className="space-y-2">
+              <p className="label-overline mb-3" style={{ letterSpacing: '0.18em' }}>
+                OTHER · {uncategorized.length}
+              </p>
+              <div style={{ borderTop: '1px solid #cdc6b6' }}>
                 {uncategorized.map(t => <TaskRowItem key={t.id} task={t} />)}
               </div>
             </section>
@@ -97,38 +108,21 @@ export default async function TasksListPage() {
 }
 
 function TaskRowItem({ task }: { task: TaskRow }) {
-  const intervalLabel =
-    task.interval_min_days === task.interval_max_days
-      ? `Every ${task.interval_min_days}d`
-      : `Every ${task.interval_min_days}–${task.interval_max_days}d`;
-
+  const intervalLabel = humanizeInterval(task.interval_min_days, task.interval_max_days);
   const modeLabel = task.mode === 'countdown' ? ' · Countdown' : '';
 
   return (
     <Link
       href={`/tasks/${task.id}`}
-      className="flex items-center justify-between bg-stone border border-glow-border rounded-lg shadow-card px-4 py-3.5 card-lift"
+      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 0', borderBottom: '1px solid #cdc6b6', cursor: 'pointer' }}
     >
-      <div className="flex items-center gap-3 min-w-0">
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
         <span
-          className="w-2 h-2 rounded-full flex-shrink-0"
-          style={{ backgroundColor: getCategoryColor(task.category?.name ?? '').dot }}
+          style={{ width: '10px', height: '10px', borderRadius: '50%', flexShrink: 0, backgroundColor: getCategoryColor(task.category?.name ?? '').dot }}
         />
-        <span className="text-sm font-medium text-charcoal truncate">{task.name}</span>
-        {task.routine && (
-          <span
-            className="hidden sm:inline-flex items-center text-[11px] font-medium px-2.5 py-0.5 rounded-pill flex-shrink-0"
-            style={{
-              border: '1px solid #cdc6b6',
-              backgroundColor: '#f6f1e6',
-              color: '#6b665e',
-            }}
-          >
-            {task.routine.name}
-          </span>
-        )}
+        <span style={{ fontSize: '14px', fontWeight: 500, color: '#2b2823', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.name}</span>
       </div>
-      <span className="text-xs text-warm-light flex-shrink-0 ml-3">{intervalLabel}{modeLabel}</span>
+      <span style={{ fontSize: '11px', color: '#a8a297', flexShrink: 0, marginLeft: '12px' }}>{intervalLabel}{modeLabel}</span>
     </Link>
   );
 }

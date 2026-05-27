@@ -30,7 +30,7 @@ export default async function EditTaskPage({ params }: Props) {
       .order('name'),
     supabase
       .from('task_products')
-      .select('id, track_usage, uses_per_supply_unit, product:products(id, name, description, product_url)')
+      .select('id, track_usage, uses_per_supply_unit, purchase_price, uses_per_container, product:products(id, name, description, product_url)')
       .eq('task_id', id),
     supabase
       .from('tasks')
@@ -51,10 +51,17 @@ export default async function EditTaskPage({ params }: Props) {
     description:           t.description ?? '',
     default_cost:          t.default_cost != null ? String(t.default_cost) : '',
     reminder_notes:        t.reminder_notes ?? '',
+    frequencyType:         t.frequency_type,
     intervalType:          isExact ? 'exact' : 'range',
     intervalMin:           t.interval_min_days,
     intervalMax:           t.interval_max_days,
     intervalUnit:          'days',
+    slotALabel:            t.slot_a_label ?? '',
+    slotATime:             t.slot_a_time ?? '',
+    slotBLabel:            t.slot_b_label ?? '',
+    slotBTime:             t.slot_b_time ?? '',
+    scheduledTime:         t.scheduled_time ?? '',
+    timeOfDayLabel:        t.time_of_day_label ?? '',
     default_reminder_days: t.default_reminder_days,
     mode:                  t.mode,
     target_date:           t.target_date ?? '',
@@ -62,12 +69,21 @@ export default async function EditTaskPage({ params }: Props) {
     days_before_target:    t.days_before_target ?? 7,
     continue_after_target: t.continue_after_target,
     initial_anchor_date:   '',
+    provider_cost:         t.provider_cost != null ? String(t.provider_cost) : '',
+    provider_phone:        t.provider_phone ?? '',
+    prep_notes:            t.prep_notes ?? '',
+    autocomplete_enabled:  t.autocomplete_enabled,
+    reminder_enabled:      t.reminder_enabled,
+    reminder_value:        t.reminder_value,
+    reminder_unit:         t.reminder_unit,
   };
 
   type RawTaskProduct = {
     id: string;
     track_usage: boolean;
     uses_per_supply_unit: number | null;
+    purchase_price: number | null;
+    uses_per_container: number | null;
     product: { id: string; name: string; description: string | null; product_url: string | null };
   };
 
@@ -79,6 +95,8 @@ export default async function EditTaskPage({ params }: Props) {
     product_url: tp.product.product_url ?? '',
     track_usage: tp.track_usage,
     uses_per_supply_unit: tp.uses_per_supply_unit != null ? tp.uses_per_supply_unit : '',
+    purchase_price: tp.purchase_price != null ? String(tp.purchase_price) : '',
+    uses_per_container: tp.uses_per_container != null ? tp.uses_per_container : '',
   }));
 
   type SpData = { service_provider: ServiceProviderFormEntry | null } | null;
