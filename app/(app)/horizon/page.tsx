@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import HorizonClient from '@/components/HorizonClient';
 import type { InstanceWithTask } from '@/types';
+import { retireStaleOverdueInstances } from '@/lib/autoComplete';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,6 +11,8 @@ export default async function HorizonPage() {
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) redirect('/login');
+
+  await retireStaleOverdueInstances(supabase);
 
   const { data: instances } = await supabase
     .from('instances')

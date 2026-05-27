@@ -10,11 +10,17 @@ export default async function NewTaskPage() {
 
   if (!user) redirect('/login');
 
-  const { data: categories } = await supabase
-    .from('categories')
-    .select('*')
-    .or(`user_id.eq.${user.id},user_id.is.null`)
-    .order('name');
+  const [{ data: categories }, { data: productCategories }] = await Promise.all([
+    supabase
+      .from('categories')
+      .select('*')
+      .or(`user_id.eq.${user.id},user_id.is.null`)
+      .order('name'),
+    supabase
+      .from('product_categories')
+      .select('id, name, slug, parent_id, sort_order, created_at')
+      .order('sort_order'),
+  ]);
 
   return (
     <div className="max-w-2xl mx-auto px-5 py-8 space-y-6">
@@ -22,6 +28,7 @@ export default async function NewTaskPage() {
       <div className="bg-stone border border-glow-border rounded-lg shadow-card p-5">
         <TaskForm
           categories={categories ?? []}
+          productCategories={productCategories ?? []}
           userId={user.id}
         />
       </div>

@@ -12,7 +12,7 @@ import InlineTaskForm from '@/components/InlineTaskForm';
 import type { Routine, Task, Category, ConflictIntent, ConflictResolution, DelayTarget, AdjustDirection, SkipTarget, NoConflictOrder } from '@/types';
 import { getCategoryColor } from '@/lib/categoryColors';
 
-type PairWithTasks = {
+export type PairWithTasks = {
   id: string;
   routine_id: string;
   user_id: string;
@@ -90,10 +90,27 @@ export default function RoutineDetailClient({
   const [suggestionBanner, setSuggestionBanner] = useState<string | null>(null);
   const [softHints, setSoftHints] = useState<SoftHint[]>([]);
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [showDeleteRoutine, setShowDeleteRoutine] = useState(false);
+  const [deleteMode, setDeleteMode] = useState<'detach' | 'delete_all'>('detach');
+  const [deleting, setDeleting] = useState(false);
+  const [slideOverTask, setSlideOverTask] = useState<Task | null>(null);
 
   const noInstanceSet = new Set(tasksWithNoInstances);
 
   useEffect(() => { setLocalConflicts(conflicts); }, [conflicts]);
+
+  async function handleDeleteRoutine() {
+    setDeleting(true);
+    const supabase = createClient();
+    if (deleteMode === 'delete_all') {
+      await supabase.from('tasks').delete().eq('routine_id', routine.id);
+    } else {
+      await supabase.from('tasks').update({ routine_id: null }).eq('routine_id', routine.id);
+    }
+    await supabase.from('routines').delete().eq('id', routine.id);
+    router.push('/routines');
+    router.refresh();
+  }
 
   async function fetchSoftHints(taskNames: string[], currentPairs: PairWithTasks[]) {
     const supabase = createClient();
@@ -304,12 +321,16 @@ export default function RoutineDetailClient({
             )}
           </div>
         </div>
-        <Link
-          href={`/routines/${routine.id}/edit`}
-          className="flex-shrink-0 text-sm text-warm-mid hover:text-charcoal ml-3"
-        >
-          Edit
-        </Link>
+        <div className="flex items-center gap-3 ml-3 flex-shrink-0">
+          <Link href={`/routines/${routine.id}/edit`} className="text-sm text-warm-mid hover:text-charcoal">Edit</Link>
+          <button
+            type="button"
+            onClick={() => setShowDeleteRoutine(true)}
+            className="text-sm text-warm-light hover:text-charcoal"
+          >
+            Delete
+          </button>
+        </div>
       </div>
 
       {/* Pending overlaps — hidden when intent = independent */}
@@ -498,7 +519,11 @@ export default function RoutineDetailClient({
                   key={t.id}
                   style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 0', borderBottom: '1px solid #cdc6b6', gap: '12px' }}
                 >
-                  <Link href={`/tasks/${t.id}`} style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1, textDecoration: 'none' }}>
+                  <button
+                    type="button"
+                    onClick={() => setSlideOverTask(t)}
+                    style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: 0 }}
+                  >
                     <span style={{ width: '8px', height: '8px', borderRadius: '50%', flexShrink: 0, backgroundColor: getCategoryColor(catName).dot }} />
                     <div style={{ minWidth: 0 }}>
                       <p style={{ fontSize: '14px', fontWeight: 500, color: '#2b2823', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</p>
@@ -506,7 +531,7 @@ export default function RoutineDetailClient({
                         {catName ? `${catName} · ` : ''}{intervalLabel}
                       </p>
                     </div>
-                  </Link>
+                  </button>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                     {needsSetup && (
                       <Link
@@ -655,6 +680,138 @@ export default function RoutineDetailClient({
           onResolved={handleConflictResolved}
           onClose={() => setActiveConflict(null)}
         />
+      )}
+
+      {/* Task slide-over panel */}
+      {slideOverTask && (() => {
+        const t = slideOverTask;
+        const catName = (t as Task & { category?: { name: string } }).category?.name ?? '';
+        const catColor = getCategoryColor(catName).dot;
+        const intervalLabel = t.interval_min_days === t.interval_max_days
+          ? `Every ${t.interval_min_days} days`
+          : `Every ${t.interval_min_days}–${t.interval_max_days} days`;
+        return (
+          <>
+            {/* Backdrop */}
+            <div
+              style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(43,40,35,0.20)', zIndex: 40 }}
+              onClick={() => setSlideOverTask(null)}
+            />
+            {/* Panel */}
+            <div style={{
+              position: 'fixed', top: 0, right: 0, bottom: 0, width: '320px',
+              backgroundColor: '#f6f1e6', borderLeft: '1px solid #cdc6b6',
+              boxShadow: '-4px 0 24px rgba(43,40,35,0.10)', zIndex: 41,
+              display: 'flex', flexDirection: 'column', overflowY: 'auto',
+            }}>
+              {/* Panel header */}
+              <div style={{ padding: '20px 20px 16px', borderBottom: '1px solid #cdc6b6', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                  <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: catColor, flexShrink: 0 }} />
+                  <p style={{ fontSize: '16px', fontWeight: 500, color: '#2b2823', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSlideOverTask(null)}
+                  style={{ background: 'none', border: 'none', fontSize: '20px', color: '#a8a297', cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}
+                >
+                  ×
+                </button>
+              </div>
+
+              {/* Panel body */}
+              <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', flex: 1 }}>
+                {catName && (
+                  <div>
+                    <p style={{ fontSize: '10px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#a8a297', marginBottom: '3px' }}>Category</p>
+                    <p style={{ fontSize: '13px', color: '#2b2823' }}>{catName}</p>
+                  </div>
+                )}
+                <div>
+                  <p style={{ fontSize: '10px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#a8a297', marginBottom: '3px' }}>Frequency</p>
+                  <p style={{ fontSize: '13px', color: '#2b2823' }}>{intervalLabel}</p>
+                </div>
+                {t.description && (
+                  <div>
+                    <p style={{ fontSize: '10px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#a8a297', marginBottom: '3px' }}>Notes</p>
+                    <p style={{ fontSize: '13px', color: '#6b665e', lineHeight: 1.5 }}>{t.description}</p>
+                  </div>
+                )}
+                {t.default_cost != null && (
+                  <div>
+                    <p style={{ fontSize: '10px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#a8a297', marginBottom: '3px' }}>Default cost</p>
+                    <p style={{ fontSize: '13px', color: '#2b2823' }}>${t.default_cost.toFixed(2)}</p>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: 'auto', paddingTop: '12px', borderTop: '1px solid #cdc6b6' }}>
+                  <Link
+                    href={`/tasks/${t.id}/edit`}
+                    style={{ display: 'block', textAlign: 'center', backgroundColor: '#2b2823', color: '#efe9dd', fontSize: '13px', fontWeight: 500, borderRadius: '100px', padding: '9px 20px', textDecoration: 'none' }}
+                  >
+                    Edit ritual
+                  </Link>
+                  <Link
+                    href={`/tasks/${t.id}`}
+                    style={{ display: 'block', textAlign: 'center', border: '1px solid #2b2823', backgroundColor: 'transparent', color: '#2b2823', fontSize: '13px', borderRadius: '100px', padding: '9px 20px', textDecoration: 'none' }}
+                  >
+                    View detail
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => { handleRemoveTask(t.id); setSlideOverTask(null); }}
+                    disabled={removingTaskId === t.id}
+                    style={{ background: 'none', border: 'none', fontSize: '12px', color: '#a8a297', cursor: 'pointer', padding: '6px 0' }}
+                  >
+                    Remove from routine
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
+        );
+      })()}
+
+      {/* Delete routine modal */}
+      {showDeleteRoutine && (
+        <div
+          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(43,40,35,0.35)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}
+          onClick={e => { if (e.target === e.currentTarget) setShowDeleteRoutine(false); }}
+        >
+          <div style={{ backgroundColor: '#f6f1e6', borderRadius: '16px', padding: '28px', width: '100%', maxWidth: '380px', boxShadow: '0 8px 32px rgba(43,40,35,0.14)' }}>
+            <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontStyle: 'italic', fontSize: '20px', color: '#2b2823', marginBottom: '6px' }}>
+              Delete &ldquo;{routine.name}&rdquo;?
+            </p>
+            <p style={{ fontSize: '13px', color: '#6b665e', marginBottom: '20px' }}>
+              Choose what happens to its rituals.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px' }}>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer' }}>
+                <input type="radio" name="rdm" checked={deleteMode === 'detach'} onChange={() => setDeleteMode('detach')} style={{ marginTop: '3px', accentColor: '#2b2823' }} />
+                <div>
+                  <p style={{ fontSize: '13px', fontWeight: 500, color: '#2b2823' }}>Remove from routine only</p>
+                  <p style={{ fontSize: '12px', color: '#6b665e' }}>Keep all rituals as standalone.</p>
+                </div>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer' }}>
+                <input type="radio" name="rdm" checked={deleteMode === 'delete_all'} onChange={() => setDeleteMode('delete_all')} style={{ marginTop: '3px', accentColor: '#2b2823' }} />
+                <div>
+                  <p style={{ fontSize: '13px', fontWeight: 500, color: '#2b2823' }}>Delete routine and all rituals</p>
+                  <p style={{ fontSize: '12px', color: '#c08a6e' }}>All {tasks.length} ritual{tasks.length !== 1 ? 's' : ''} will be permanently deleted.</p>
+                </div>
+              </label>
+            </div>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button type="button" onClick={() => setShowDeleteRoutine(false)} style={{ flex: 1, border: '1px solid #2b2823', backgroundColor: 'transparent', color: '#2b2823', fontSize: '13px', fontWeight: 500, borderRadius: '100px', padding: '8px 16px', cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button type="button" onClick={handleDeleteRoutine} disabled={deleting} style={{ flex: 1, backgroundColor: '#c08a6e', color: '#fff', fontSize: '13px', fontWeight: 500, borderRadius: '100px', padding: '8px 16px', cursor: 'pointer', border: 'none', opacity: deleting ? 0.6 : 1 }}>
+                {deleting ? 'Deleting…' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

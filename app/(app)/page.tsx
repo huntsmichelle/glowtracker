@@ -1,9 +1,9 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import DashboardClient from '@/components/DashboardClient';
-import type { InstanceWithTask } from '@/types';
+import type { InstanceWithTask, ProductAlert, Product, ProductCategory } from '@/types';
 import { format, subDays } from 'date-fns';
-import { autoCompleteInstances } from '@/lib/autoComplete';
+import { autoCompleteInstances, retireStaleOverdueInstances } from '@/lib/autoComplete';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,13 +13,17 @@ export default async function DashboardPage() {
 
   if (!user) redirect('/login');
 
-  // Run autocomplete before fetching so auto-kept instances are already removed from the list
-  await autoCompleteInstances(supabase);
+  // Run autocomplete and retire stale overdues before fetching
+  await Promise.all([
+    autoCompleteInstances(supabase),
+    retireStaleOverdueInstances(supabase),
+  ]);
 
   const todayStr = format(new Date(), 'yyyy-MM-dd');
   const cutoff84 = format(subDays(new Date(), 84), 'yyyy-MM-dd');
   const cutoff30 = format(subDays(new Date(), 30), 'yyyy-MM-dd');
   const ahead7   = format(new Date(Date.now() + 7 * 86400000), 'yyyy-MM-dd');
+  const ahead30  = format(new Date(Date.now() + 30 * 86400000), 'yyyy-MM-dd');
 
   const [
     instancesRes,
@@ -27,6 +31,9 @@ export default async function DashboardPage() {
     heatmapRes,
     statsRes,
     approachingRes,
+    alertsRes,
+    shelfRes,
+    shelfCatsRes,
   ] = await Promise.all([
     // Today + overdue instances only (due_date_start ≤ today)
     supabase
@@ -81,6 +88,29 @@ export default async function DashboardPage() {
       .lte('due_date_start', ahead7)
       .order('due_date_start', { ascending: true })
       .limit(5),
+
+    // Product alerts — pending only, max 2 shown
+    supabase
+      .from('product_alerts')
+      .select('*, product:products(name), task:tasks(name)')
+      .eq('user_id', user.id)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false })
+      .limit(2),
+
+    // Shelf: products needing attention (depleted, expiring ≤30 days, or remaining tracked)
+    supabase
+      .from('products')
+      .select('id, name, brand, is_depleted, remaining_amount, container_size, container_unit, expires_at, product_category_id')
+      .eq('user_id', user.id)
+      .order('name')
+      .limit(40),
+
+    // Product categories for shelf filter pills
+    supabase
+      .from('product_categories')
+      .select('id, name, slug, parent_id, sort_order, created_at')
+      .order('sort_order', { ascending: true }),
   ]);
 
   const instances = (instancesRes.data as InstanceWithTask[]) ?? [];
@@ -121,6 +151,11 @@ export default async function DashboardPage() {
   }>;
 
   const displayName = (profileRes.data?.display_name ?? null) as string | null;
+  const productAlerts = (alertsRes.data ?? []) as ProductAlert[];
+
+  const shelfProducts = (shelfRes.data ?? []) as Product[];
+  const shelfProductCategories = (shelfCatsRes.data ?? []) as ProductCategory[];
+  console.log('[Today] shelf products fetched:', shelfProducts.length, shelfRes.error?.message ?? 'ok');
 
   return (
     <DashboardClient
@@ -132,6 +167,9 @@ export default async function DashboardPage() {
       completedCount={completedCount}
       skippedCount={skippedCount}
       approaching={approaching}
+      productAlerts={productAlerts}
+      shelfProducts={shelfProducts}
+      shelfProductCategories={shelfProductCategories}
     />
   );
 }

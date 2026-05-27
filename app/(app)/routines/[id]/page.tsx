@@ -3,7 +3,8 @@ import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { format, parseISO } from 'date-fns';
 import type { Routine, Task, Category } from '@/types';
-import RoutineDetailClient from '@/components/RoutineDetailClient';
+import RoutineDetailClient, { type PairWithTasks } from '@/components/RoutineDetailClient';
+import type { ConflictWithJoins } from '@/components/ConflictModal';
 
 export const dynamic = 'force-dynamic';
 
@@ -174,8 +175,8 @@ export default async function RoutineDetailPage({ params, searchParams }: Props)
       <RoutineDetailClient
         routine={routine as Routine}
         tasks={tasks}
-        pairs={allPairsData as never}
-        conflicts={(conflictsRes.data ?? []) as never}
+        pairs={allPairsData as unknown as PairWithTasks[]}
+        conflicts={(conflictsRes.data ?? []) as unknown as ConflictWithJoins[]}
         availableTasks={(availableRes.data ?? []) as Task[]}
         timelineTasks={timelineTasks}
         categories={(categoriesRes.data ?? []) as Category[]}

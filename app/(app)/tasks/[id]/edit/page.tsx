@@ -16,7 +16,7 @@ export default async function EditTaskPage({ params }: Props) {
 
   if (!user) redirect('/login');
 
-  const [{ data: task }, { data: categories }, { data: taskProducts }, { data: spRow }] = await Promise.all([
+  const [{ data: task }, { data: categories }, { data: productCategories }, { data: taskProducts }, { data: spRow }] = await Promise.all([
     supabase
       .from('tasks')
       .select('*, category:categories(*)')
@@ -29,8 +29,12 @@ export default async function EditTaskPage({ params }: Props) {
       .or(`user_id.eq.${user.id},user_id.is.null`)
       .order('name'),
     supabase
+      .from('product_categories')
+      .select('id, name, slug, parent_id, sort_order, created_at')
+      .order('sort_order'),
+    supabase
       .from('task_products')
-      .select('id, track_usage, uses_per_supply_unit, purchase_price, uses_per_container, product:products(id, name, description, product_url)')
+      .select('id, track_usage, purchase_price, uses_per_container, use_amount_override, product:products(id, name, brand, description, product_url, product_category_id, container_size, container_unit, expires_at)')
       .eq('task_id', id),
     supabase
       .from('tasks')
@@ -81,22 +85,33 @@ export default async function EditTaskPage({ params }: Props) {
   type RawTaskProduct = {
     id: string;
     track_usage: boolean;
-    uses_per_supply_unit: number | null;
     purchase_price: number | null;
     uses_per_container: number | null;
-    product: { id: string; name: string; description: string | null; product_url: string | null };
+    use_amount_override: number | null;
+    product: {
+      id: string; name: string; brand: string | null;
+      description: string | null; product_url: string | null;
+      product_category_id: string | null;
+      container_size: number | null; container_unit: string | null;
+      expires_at: string | null;
+    };
   };
 
   const initialProducts: ProductFormEntry[] = ((taskProducts ?? []) as unknown as RawTaskProduct[]).map(tp => ({
     id: tp.product.id,
     taskProductId: tp.id,
     name: tp.product.name,
+    brand: tp.product.brand ?? '',
     description: tp.product.description ?? '',
     product_url: tp.product.product_url ?? '',
+    product_category_id: tp.product.product_category_id ?? '',
     track_usage: tp.track_usage,
-    uses_per_supply_unit: tp.uses_per_supply_unit != null ? tp.uses_per_supply_unit : '',
+    container_size: tp.product.container_size != null ? tp.product.container_size : '',
+    container_unit: tp.product.container_unit ?? '',
+    use_amount_override: tp.use_amount_override != null ? tp.use_amount_override : '',
     purchase_price: tp.purchase_price != null ? String(tp.purchase_price) : '',
     uses_per_container: tp.uses_per_container != null ? tp.uses_per_container : '',
+    expires_at: tp.product.expires_at ? tp.product.expires_at.slice(0, 7) : '',
   }));
 
   type SpData = { service_provider: ServiceProviderFormEntry | null } | null;
@@ -111,6 +126,7 @@ export default async function EditTaskPage({ params }: Props) {
       <div className="bg-stone border border-glow-border rounded-lg shadow-card p-5">
         <TaskForm
           categories={categories ?? []}
+          productCategories={productCategories ?? []}
           initialValues={initialValues}
           taskId={id}
           initialProducts={initialProducts}

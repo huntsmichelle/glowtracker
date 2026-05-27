@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import type { Task, Category, Routine } from '@/types';
 import { getCategoryColor } from '@/lib/categoryColors';
+import { format, parseISO } from 'date-fns';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,17 +28,44 @@ export default async function TasksListPage() {
 
   if (!user) redirect('/login');
 
-  const { data: tasksList } = await supabase
-    .from('tasks')
-    .select('*, category:categories(*), routine:routines(id, name, color)')
-    .eq('user_id', user.id)
-    .eq('is_active', true)
-    .order('name');
+  const [{ data: tasksList }, { data: nextInstances }] = await Promise.all([
+    supabase
+      .from('tasks')
+      .select('*, category:categories(*), routine:routines(id, name, color)')
+      .eq('user_id', user.id)
+      .eq('is_active', true)
+      .order('name'),
+    supabase
+      .from('instances')
+      .select('task_id, due_date_start')
+      .eq('user_id', user.id)
+      .in('status', ['upcoming', 'due', 'snoozed'])
+      .eq('is_projected', false)
+      .order('due_date_start', { ascending: true }),
+  ]);
+
+  // Build earliest instance date per task
+  const nextDateByTask = new Map<string, string>();
+  for (const inst of nextInstances ?? []) {
+    if (!nextDateByTask.has(inst.task_id)) {
+      nextDateByTask.set(inst.task_id, inst.due_date_start);
+    }
+  }
+
+  // Sort tasks: soonest upcoming first, no-instance tasks at end (by name)
+  const sorted = [...(tasksList ?? []) as TaskRow[]].sort((a, b) => {
+    const da = nextDateByTask.get(a.id);
+    const db = nextDateByTask.get(b.id);
+    if (da && db) return da.localeCompare(db);
+    if (da) return -1;
+    if (db) return 1;
+    return a.name.localeCompare(b.name);
+  });
 
   const grouped: Record<string, TaskRow[]> = {};
   const uncategorized: TaskRow[] = [];
 
-  for (const t of tasksList ?? []) {
+  for (const t of sorted) {
     const row = t as TaskRow;
     if (row.category) {
       if (!grouped[row.category.name]) grouped[row.category.name] = [];
@@ -48,7 +76,7 @@ export default async function TasksListPage() {
   }
 
   const sortedGroups = Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b));
-  const total = (tasksList ?? []).length;
+  const total = sorted.length;
 
   return (
     <div className="max-w-2xl mx-auto px-5 py-8 space-y-8">
@@ -87,7 +115,7 @@ export default async function TasksListPage() {
                 {catName.toUpperCase()} · {items.length}
               </p>
               <div style={{ borderTop: '1px solid #cdc6b6' }}>
-                {items.map(t => <TaskRowItem key={t.id} task={t} />)}
+                {items.map(t => <TaskRowItem key={t.id} task={t} nextDate={nextDateByTask.get(t.id)} />)}
               </div>
             </section>
           ))}
@@ -97,7 +125,7 @@ export default async function TasksListPage() {
                 OTHER · {uncategorized.length}
               </p>
               <div style={{ borderTop: '1px solid #cdc6b6' }}>
-                {uncategorized.map(t => <TaskRowItem key={t.id} task={t} />)}
+                {uncategorized.map(t => <TaskRowItem key={t.id} task={t} nextDate={nextDateByTask.get(t.id)} />)}
               </div>
             </section>
           )}
@@ -107,9 +135,10 @@ export default async function TasksListPage() {
   );
 }
 
-function TaskRowItem({ task }: { task: TaskRow }) {
+function TaskRowItem({ task, nextDate }: { task: TaskRow; nextDate?: string }) {
   const intervalLabel = humanizeInterval(task.interval_min_days, task.interval_max_days);
   const modeLabel = task.mode === 'countdown' ? ' · Countdown' : '';
+  const nextLabel = nextDate ? format(parseISO(nextDate), 'MMM d') : null;
 
   return (
     <Link
@@ -122,7 +151,10 @@ function TaskRowItem({ task }: { task: TaskRow }) {
         />
         <span style={{ fontSize: '14px', fontWeight: 500, color: '#2b2823', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.name}</span>
       </div>
-      <span style={{ fontSize: '11px', color: '#a8a297', flexShrink: 0, marginLeft: '12px' }}>{intervalLabel}{modeLabel}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0, marginLeft: '12px' }}>
+        {nextLabel && <span style={{ fontSize: '12px', color: '#8ea394', fontWeight: 500 }}>{nextLabel}</span>}
+        <span style={{ fontSize: '11px', color: '#a8a297' }}>{intervalLabel}{modeLabel}</span>
+      </div>
     </Link>
   );
 }

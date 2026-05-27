@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import type { Routine } from '@/types';
 import TemplateGallery, { type TemplateItem } from '@/components/TemplateGallery';
+import RoutinesListClient from '@/components/RoutinesListClient';
 
 export const dynamic = 'force-dynamic';
 
@@ -75,57 +76,7 @@ export default async function RoutinesListPage() {
         </Link>
       </div>
 
-      {routines.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12 gap-3">
-          <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontStyle: 'italic', fontSize: '22px', color: '#2b2823' }}>
-            No routines yet.
-          </p>
-          <div style={{ width: '40px', height: '1px', backgroundColor: '#cdc6b6' }} />
-          <Link href="/routines/templates" style={{ fontSize: '10px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#a8a297', cursor: 'pointer' }}>
-            Browse the template library
-          </Link>
-        </div>
-      ) : (
-        <div style={{ borderTop: '1px solid #cdc6b6' }}>
-          {routines.map(r => (
-            <Link
-              key={r.id}
-              href={`/routines/${r.id}`}
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 0', borderBottom: '1px solid #cdc6b6', cursor: 'pointer' }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-                <span style={{ width: '10px', height: '10px', borderRadius: '50%', flexShrink: 0, backgroundColor: r.color }} />
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ fontSize: '14px', fontWeight: 500, color: '#2b2823', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</p>
-                  {r.description && (
-                    <p style={{ fontSize: '12px', color: '#6b665e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: '1px' }}>{r.description}</p>
-                  )}
-                </div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, marginLeft: '12px' }}>
-                {r.pending_conflicts > 0 && r.conflict_intent !== 'independent' && (
-                  <span
-                    style={{
-                      fontSize: '11px',
-                      fontWeight: 500,
-                      borderRadius: '100px',
-                      padding: '2px 8px',
-                      backgroundColor: 'rgba(192,138,110,0.12)',
-                      border: '1px solid #c08a6e',
-                      color: '#2b2823',
-                    }}
-                  >
-                    {r.pending_conflicts} overlap{r.pending_conflicts !== 1 ? 's' : ''}
-                  </span>
-                )}
-                <span style={{ fontSize: '12px', color: '#a8a297' }}>
-                  {r.task_count} ritual{r.task_count !== 1 ? 's' : ''}
-                </span>
-              </div>
-            </Link>
-          ))}
-        </div>
-      )}
+      <RoutinesListClient routines={routines} />
 
       {/* Inspiration — category tile grid */}
       <TemplateGallery templates={systemTemplates} userId={user.id} />

@@ -1,57 +1,25 @@
+import { tint, colors } from '@/lib/colors';
+
 export const CATEGORY_COLORS: Record<string, {
   dot: string;
   border: string;
   tint: string;
   label: string;
 }> = {
-  'Skin': {
-    dot:    '#8ea394',
-    border: '#8ea394',
-    tint:   'rgba(142, 163, 148, 0.10)',
-    label:  'Skin',
-  },
-  'Hair': {
-    dot:    '#93a3b1',
-    border: '#93a3b1',
-    tint:   'rgba(147, 163, 177, 0.10)',
-    label:  'Hair',
-  },
-  'Nails': {
-    dot:    '#b5a89a',
-    border: '#b5a89a',
-    tint:   'rgba(181, 168, 154, 0.10)',
-    label:  'Nails',
-  },
-  'Treatments': {
-    dot:    '#b89880',
-    border: '#b89880',
-    tint:   'rgba(184, 152, 128, 0.10)',
-    label:  'Treatments',
-  },
-  'Body': {
-    dot:    '#a89aaa',
-    border: '#a89aaa',
-    tint:   'rgba(168, 154, 170, 0.10)',
-    label:  'Body',
-  },
-  'Brows & Lashes': {
-    dot:    '#a0978c',
-    border: '#a0978c',
-    tint:   'rgba(160, 151, 140, 0.10)',
-    label:  'Brows & Lashes',
-  },
-  'Hair Removal': {
-    dot:    '#93a3b1',
-    border: '#93a3b1',
-    tint:   'rgba(147, 163, 177, 0.10)',
-    label:  'Hair Removal',
-  },
+  'Skin':           { dot: colors.categorySkin,        border: colors.categorySkin,        tint: tint(colors.categorySkin,        0.10), label: 'Skin' },
+  'Hair':           { dot: colors.categoryHair,        border: colors.categoryHair,        tint: tint(colors.categoryHair,        0.10), label: 'Hair' },
+  'Nails':          { dot: colors.categoryNails,       border: colors.categoryNails,       tint: tint(colors.categoryNails,       0.10), label: 'Nails' },
+  'Treatments':     { dot: colors.categoryTreatments,  border: colors.categoryTreatments,  tint: tint(colors.categoryTreatments,  0.10), label: 'Treatments' },
+  'Body':           { dot: colors.categoryBody,        border: colors.categoryBody,        tint: tint(colors.categoryBody,        0.10), label: 'Body' },
+  'Brows & Lashes': { dot: colors.categoryBrowsLashes, border: colors.categoryBrowsLashes, tint: tint(colors.categoryBrowsLashes, 0.10), label: 'Brows & Lashes' },
+  'Hair Removal':   { dot: colors.categoryHairRemoval, border: colors.categoryHairRemoval, tint: tint(colors.categoryHairRemoval, 0.10), label: 'Hair Removal' },
+  'Makeup':         { dot: colors.categoryMakeup,      border: colors.categoryMakeup,      tint: tint(colors.categoryMakeup,      0.10), label: 'Makeup' },
 };
 
 export const DEFAULT_CATEGORY_COLOR = {
-  dot:    '#a8a297',
-  border: '#a8a297',
-  tint:   'rgba(168, 162, 151, 0.10)',
+  dot:    colors.categoryDefault,
+  border: colors.categoryDefault,
+  tint:   tint(colors.categoryDefault, 0.10),
 };
 
 export function getCategoryColor(categoryName: string) {

@@ -16,6 +16,7 @@ import {
 } from '@/lib/instanceEngine';
 import type { InstanceWithTask, Task } from '@/types';
 import { getCategoryColor } from '@/lib/categoryColors';
+import { processInstanceKept } from '@/lib/productTracking';
 
 interface Props {
   instance: InstanceWithTask;
@@ -78,10 +79,13 @@ export default function InstanceDetailClient({ instance: initial }: Props) {
     setLoading(true);
     const date = new Date(completionDate + 'T00:00:00');
     const cost = completionCost !== '' ? Number(completionCost) : null;
+    const supabase = createClient();
     const { updated } = await completeInstance(instance.id, task as Task, date, cost);
     if (updated) setInstance({ ...instance, ...updated });
     setShowCompleteForm(false);
     setLoading(false);
+    // Non-blocking: product tracking failures must not affect kept status
+    processInstanceKept(supabase, instance.id, task.id, instance.user_id).catch(console.error);
     router.refresh();
   }
 

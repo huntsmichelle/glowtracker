@@ -10,7 +10,15 @@ const navLinks = [
     label: 'Today',
     icon: (
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+        <circle cx="12" cy="12" r="4" />
+        <line x1="12" y1="2" x2="12" y2="6" />
+        <line x1="12" y1="18" x2="12" y2="22" />
+        <line x1="4.93" y1="4.93" x2="7.76" y2="7.76" />
+        <line x1="16.24" y1="16.24" x2="19.07" y2="19.07" />
+        <line x1="2" y1="12" x2="6" y2="12" />
+        <line x1="18" y1="12" x2="22" y2="12" />
+        <line x1="4.93" y1="19.07" x2="7.76" y2="16.24" />
+        <line x1="16.24" y1="7.76" x2="19.07" y2="4.93" />
       </svg>
     ),
   },
@@ -19,8 +27,11 @@ const navLinks = [
     label: 'Horizon',
     icon: (
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
-        <polyline points="16 7 22 7 22 13" />
+        <path d="M22 22H2" />
+        <path d="M5 22a7 7 0 0 1 14 0" />
+        <path d="M12 15v-3" />
+        <path d="M7.05 17.05 4.93 14.93" />
+        <path d="M16.95 17.05 19.07 14.93" />
       </svg>
     ),
   },
@@ -30,6 +41,15 @@ const navLinks = [
     icon: (
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zM12 6v6l4 2" />
+      </svg>
+    ),
+  },
+  {
+    href: '/shelf',
+    label: 'Shelf',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="2" y="3" width="20" height="4" rx="1" /><rect x="2" y="10" width="20" height="4" rx="1" /><rect x="2" y="17" width="20" height="4" rx="1" />
       </svg>
     ),
   },

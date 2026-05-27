@@ -21,12 +21,14 @@ import type {
   IntervalType,
   IntervalUnit,
   ProductFormEntry,
+  ProductCategory,
   ServiceProviderFormEntry,
   ServiceProvider,
 } from '@/types';
 
 interface Props {
   categories: Category[];
+  productCategories?: ProductCategory[];
   initialValues?: Partial<TaskFormValues>;
   taskId?: string;
   initialProducts?: ProductFormEntry[];
@@ -54,12 +56,17 @@ const COLOR_SWATCHES = [
 function emptyProduct(): ProductFormEntry {
   return {
     name: '',
+    brand: '',
     description: '',
     product_url: '',
+    product_category_id: '',
     track_usage: false,
-    uses_per_supply_unit: '',
+    container_size: '',
+    container_unit: 'ml',
+    use_amount_override: '',
     purchase_price: '',
     uses_per_container: '',
+    expires_at: '',
   };
 }
 
@@ -201,6 +208,7 @@ function SubOverline({ children }: { children: React.ReactNode }) {
 
 export default function TaskForm({
   categories: initialCategories,
+  productCategories,
   initialValues,
   taskId,
   initialProducts,
@@ -397,6 +405,29 @@ export default function TaskForm({
     setCategoryLoading(false);
   }
 
+  const [autoFlash, setAutoFlash] = useState<Set<string>>(new Set());
+
+  function flashField(key: string) {
+    setAutoFlash(prev => new Set(prev).add(key));
+    setTimeout(() => setAutoFlash(prev => { const n = new Set(prev); n.delete(key); return n; }), 800);
+  }
+
+  function handleProductBlur(i: number, field: 'container_size' | 'use_amount_override' | 'uses_per_container') {
+    const p = productEntries[i];
+    const size = p.container_size !== '' ? Number(p.container_size) : null;
+    const amt  = p.use_amount_override !== '' ? Number(p.use_amount_override) : null;
+    const uses = p.uses_per_container !== '' ? Number(p.uses_per_container) : null;
+    if (field !== 'uses_per_container' && size != null && amt != null && amt > 0) {
+      const calc = Math.round(size / amt);
+      updateProduct(i, { ...p, uses_per_container: calc });
+      flashField(`${i}-uses_per_container`);
+    } else if (field === 'uses_per_container' && size != null && uses != null && uses > 0) {
+      const calc = parseFloat((size / uses).toFixed(2));
+      updateProduct(i, { ...p, use_amount_override: calc });
+      flashField(`${i}-use_amount_override`);
+    }
+  }
+
   // ── Product actions ───────────────────────────────────────────────────────
 
   function addProduct() {
@@ -524,7 +555,12 @@ export default function TaskForm({
       reminder_enabled:      reminderEnabled,
       reminder_value:        reminderValue,
       reminder_unit:         reminderUnit,
-      default_reminder_days: reminderEnabled && reminderUnit === 'days' ? reminderValue : reminderEnabled && reminderUnit === 'hours' ? Math.round(reminderValue / 24) : 0,
+      default_reminder_days: reminderEnabled
+        ? (reminderUnit === 'days' ? reminderValue
+          : reminderUnit === 'hours' ? Math.round(reminderValue / 24)
+          : reminderUnit === 'weeks' ? reminderValue * 7
+          : 0) // 'minutes' — below 1-day granularity, store as 0
+        : 0,
       user_id:               userId,
       mode,
       frequency_type:        mode === 'standard' ? frequencyType : 'interval',
@@ -579,16 +615,22 @@ export default function TaskForm({
       if (!product.name.trim()) continue;
 
       const productPayload = {
-        name:                 product.name.trim(),
-        notes:                product.description.trim() || null,
-        product_url:          product.product_url.trim() || null,
-        uses_per_supply_unit: product.uses_per_supply_unit !== '' ? product.uses_per_supply_unit : null,
-        user_id:              userId,
+        name:                product.name.trim(),
+        brand:               product.brand.trim() || null,
+        notes:               product.description.trim() || null,
+        product_url:         product.product_url.trim() || null,
+        product_category_id: product.product_category_id || null,
+        container_size:      product.container_size !== '' ? Number(product.container_size) : null,
+        container_unit:      product.container_unit.trim() || null,
+        expires_at:          product.expires_at ? product.expires_at + '-01' : null,
+        user_id:             userId,
       };
 
       const tpCostPayload = {
-        purchase_price:     product.purchase_price !== '' ? Number(product.purchase_price) : null,
-        uses_per_container: product.uses_per_container !== '' ? Number(product.uses_per_container) : null,
+        track_usage:         product.track_usage,
+        purchase_price:      product.purchase_price !== '' ? Number(product.purchase_price) : null,
+        uses_per_container:  product.uses_per_container !== '' ? Number(product.uses_per_container) : null,
+        use_amount_override: product.use_amount_override !== '' ? Number(product.use_amount_override) : null,
       };
 
       if (product.id) {
@@ -610,7 +652,6 @@ export default function TaskForm({
             task_id:     resolvedTaskId,
             product_id:  newProduct.id,
             user_id:     userId,
-            track_usage: false,
             ...tpCostPayload,
           });
         }
@@ -866,9 +907,9 @@ export default function TaskForm({
         {/* Autocomplete toggle */}
         <div className="bg-taupe border border-glow-border rounded-lg px-4 py-3 flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-charcoal">Auto-complete this ritual</p>
+            <p className="text-sm font-medium text-charcoal">Make this a habit</p>
             <p className="text-xs text-warm-light mt-0.5">
-              Mark as kept automatically at the scheduled time. Good for rituals you always do.
+              Mark as kept automatically when due. Best for rituals you never skip.
             </p>
           </div>
           <ToggleSwitch
@@ -992,6 +1033,13 @@ export default function TaskForm({
                       Number(product.uses_per_container) > 0
                         ? Number(product.purchase_price) / Number(product.uses_per_container)
                         : null;
+
+                    // Two-level category picker helpers
+                    const topLevelCats = (productCategories ?? []).filter(c => !c.parent_id);
+                    const selectedCatObj = (productCategories ?? []).find(c => c.id === product.product_category_id);
+                    const derivedTopId = selectedCatObj?.parent_id ?? (selectedCatObj ? product.product_category_id : '');
+                    const subCats = derivedTopId ? (productCategories ?? []).filter(c => c.parent_id === derivedTopId) : [];
+
                     return (
                       <div key={i} className="bg-taupe rounded-lg border border-glow-border p-4 space-y-3">
                         <div className="flex items-center justify-between">
@@ -999,15 +1047,104 @@ export default function TaskForm({
                           <button type="button" onClick={() => removeProduct(i)} className="text-xs text-warm-light hover:text-charcoal">Remove</button>
                         </div>
                         <input type="text" value={product.name} onChange={e => updateProduct(i, { ...product, name: e.target.value })} placeholder="Product name *" className="w-full" />
-                        <input type="url" value={product.product_url} onChange={e => updateProduct(i, { ...product, product_url: e.target.value })} placeholder="Product link (optional)" className="w-full" />
+                        <input type="text" value={product.brand} onChange={e => updateProduct(i, { ...product, brand: e.target.value })} placeholder="Brand (optional)" className="w-full" />
+                        {/* Two-level category picker */}
+                        {topLevelCats.length > 0 && (
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide">Category</label>
+                              <select
+                                value={derivedTopId}
+                                onChange={e => {
+                                  const topId = e.target.value;
+                                  const subs = (productCategories ?? []).filter(c => c.parent_id === topId);
+                                  updateProduct(i, { ...product, product_category_id: subs.length > 0 ? '' : topId });
+                                }}
+                                className="w-full border border-glow-border rounded-md px-2 py-2 text-sm bg-stone"
+                              >
+                                <option value="">Select…</option>
+                                {topLevelCats.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                              </select>
+                            </div>
+                            {subCats.length > 0 && (
+                              <div>
+                                <label className="block text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide">Subcategory</label>
+                                <select
+                                  value={product.product_category_id}
+                                  onChange={e => updateProduct(i, { ...product, product_category_id: e.target.value })}
+                                  className="w-full border border-glow-border rounded-md px-2 py-2 text-sm bg-stone"
+                                >
+                                  <option value="">Select…</option>
+                                  {subCats.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                </select>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {/* Container size + unit */}
                         <div className="grid grid-cols-2 gap-2">
-                          <DollarInput label="Purchase price" value={product.purchase_price} onChange={v => updateProduct(i, { ...product, purchase_price: v })} />
+                          <div>
+                            <label className="block text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide">Container size</label>
+                            <div className="flex gap-1.5">
+                              <input
+                                type="number" min={0}
+                                value={product.container_size === '' ? '' : product.container_size}
+                                onChange={e => updateProduct(i, { ...product, container_size: e.target.value === '' ? '' : Number(e.target.value) })}
+                                onBlur={() => handleProductBlur(i, 'container_size')}
+                                placeholder="e.g. 150" className="w-full" style={{ flex: 1 }}
+                              />
+                              <select value={product.container_unit} onChange={e => updateProduct(i, { ...product, container_unit: e.target.value })} className="border border-glow-border rounded-md px-2 py-2 text-sm bg-stone" style={{ flexShrink: 0 }}>
+                                {['ml', 'fl oz', 'g', 'oz', 'kit', 'strips'].map(u => <option key={u} value={u}>{u}</option>)}
+                              </select>
+                            </div>
+                          </div>
                           <div>
                             <label className="block text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide">Uses per container</label>
-                            <input type="number" min={1} value={product.uses_per_container === '' ? '' : product.uses_per_container} onChange={e => updateProduct(i, { ...product, uses_per_container: e.target.value === '' ? '' : Number(e.target.value) })} placeholder="e.g. 60" className="w-full" />
+                            <input
+                              type="number" min={1}
+                              value={product.uses_per_container === '' ? '' : product.uses_per_container}
+                              onChange={e => updateProduct(i, { ...product, uses_per_container: e.target.value === '' ? '' : Number(e.target.value) })}
+                              onBlur={() => handleProductBlur(i, 'uses_per_container')}
+                              placeholder="e.g. 60" className="w-full"
+                              style={autoFlash.has(`${i}-uses_per_container`) ? { borderColor: '#8ea394', backgroundColor: 'rgba(142,163,148,0.08)', transition: 'border-color 0.2s, background-color 0.2s' } : {}}
+                            />
                           </div>
                         </div>
-                        {costPerUse != null && <p className="text-xs text-warm-light">≈ ${costPerUse.toFixed(2)} per use</p>}
+                        {costPerUse != null && (
+                          <p className="text-xs text-warm-light">≈ ${costPerUse.toFixed(2)} per use</p>
+                        )}
+                        {/* Amount per use */}
+                        <div>
+                          <label className="block text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide">Amount per use</label>
+                          <div className="flex gap-1.5 items-center">
+                            <input
+                              type="number" min={0} step="0.1"
+                              value={product.use_amount_override === '' ? '' : product.use_amount_override}
+                              onChange={e => updateProduct(i, { ...product, use_amount_override: e.target.value === '' ? '' : Number(e.target.value) })}
+                              onBlur={() => handleProductBlur(i, 'use_amount_override')}
+                              placeholder="Leave blank to calculate" className="w-full"
+                              style={autoFlash.has(`${i}-use_amount_override`) ? { borderColor: '#8ea394', backgroundColor: 'rgba(142,163,148,0.08)', transition: 'border-color 0.2s, background-color 0.2s' } : {}}
+                            />
+                            {product.container_unit && <span className="text-xs text-warm-mid whitespace-nowrap">{product.container_unit}</span>}
+                          </div>
+                        </div>
+                        {/* Purchase price */}
+                        <DollarInput label="Purchase price" value={product.purchase_price} onChange={v => updateProduct(i, { ...product, purchase_price: v })} />
+                        {/* Expiration date */}
+                        <div>
+                          <label className="block text-xs font-medium text-warm-mid mb-1.5 uppercase tracking-wide">Expiration (optional)</label>
+                          <input
+                            type="month"
+                            value={product.expires_at}
+                            onChange={e => updateProduct(i, { ...product, expires_at: e.target.value })}
+                            className="w-full"
+                          />
+                        </div>
+                        {/* Track usage toggle */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '13px', color: '#6b665e' }}>Track usage</span>
+                          <ToggleSwitch checked={product.track_usage} onChange={v => updateProduct(i, { ...product, track_usage: v })} />
+                        </div>
                       </div>
                     );
                   })}

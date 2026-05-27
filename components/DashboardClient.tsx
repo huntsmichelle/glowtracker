@@ -14,10 +14,14 @@ import {
   today,
   deriveStatus,
 } from '@/lib/instanceEngine';
-import type { InstanceWithTask, Task } from '@/types';
+import type { InstanceWithTask, Task, Product, ProductCategory } from '@/types';
 import { getCategoryColor } from '@/lib/categoryColors';
 import { detectRoutineConflicts } from '@/lib/conflictDetection';
 import { getTaskSuggestions, dismissSuggestion, type Suggestion } from '@/lib/suggestions';
+import { processInstanceKept } from '@/lib/productTracking';
+import DepletionBar from '@/components/DepletionBar';
+import SpendBar from '@/components/SpendBar';
+import type { ProductAlert } from '@/types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -35,6 +39,9 @@ interface Props {
   completedCount?: number;
   skippedCount?: number;
   approaching?: ApproachingItem[];
+  productAlerts?: ProductAlert[];
+  shelfProducts?: Product[];
+  shelfProductCategories?: ProductCategory[];
 }
 
 type ViewMode = 'list' | 'calendar';
@@ -100,6 +107,19 @@ function computeStreak(dates: string[]): number {
   return streak;
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function urgencyScore(p: Product, todayStr: string, ahead30Str: string): number {
+  if (p.is_depleted) return 0;
+  if (p.expires_at && p.expires_at < todayStr) return 1;
+  if (p.expires_at && p.expires_at <= ahead30Str) return 2;
+  const pct = p.remaining_amount != null && p.container_size && p.container_size > 0
+    ? p.remaining_amount / p.container_size : null;
+  if (pct != null && pct < 0.2) return 3 + pct;
+  if (pct != null && pct < 0.4) return 10 + pct;
+  return 999;
+}
+
 // ─── DashboardClient ──────────────────────────────────────────────────────────
 
 export default function DashboardClient({
@@ -111,6 +131,9 @@ export default function DashboardClient({
   completedCount = 0,
   skippedCount = 0,
   approaching = [],
+  productAlerts = [],
+  shelfProducts = [],
+  shelfProductCategories = [],
 }: Props) {
   const [instances, setInstances] = useState(initial);
 
@@ -164,21 +187,22 @@ export default function DashboardClient({
     const daysInMonth = new Date(year, month, 0).getDate();
     const lastDay = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
 
-    const { data: scheduled } = await supabase
-      .from('instances')
-      .select('*, task:tasks(*, category:categories(*), routine:routines(id, name, color))')
-      .gte('due_date_start', firstDay)
-      .lte('due_date_start', lastDay)
-      .not('status', 'in', '(completed,skipped)')
-      .order('due_date_start', { ascending: true });
-
-    const { data: completed } = await supabase
-      .from('instances')
-      .select('*, task:tasks(*, category:categories(*), routine:routines(id, name, color))')
-      .eq('status', 'completed')
-      .gte('actual_completion_date', firstDay)
-      .lte('actual_completion_date', lastDay)
-      .order('actual_completion_date', { ascending: true });
+    const [{ data: scheduled }, { data: completed }] = await Promise.all([
+      supabase
+        .from('instances')
+        .select('*, task:tasks(*, category:categories(*), routine:routines(id, name, color))')
+        .gte('due_date_start', firstDay)
+        .lte('due_date_start', lastDay)
+        .not('status', 'in', '(completed,skipped)')
+        .order('due_date_start', { ascending: true }),
+      supabase
+        .from('instances')
+        .select('*, task:tasks(*, category:categories(*), routine:routines(id, name, color))')
+        .eq('status', 'completed')
+        .gte('actual_completion_date', firstDay)
+        .lte('actual_completion_date', lastDay)
+        .order('actual_completion_date', { ascending: true }),
+    ]);
 
     const seen = new Set<string>();
     const merged = [...(scheduled ?? []), ...(completed ?? [])].filter(i => {
@@ -204,7 +228,30 @@ export default function DashboardClient({
     setCalYear(y);
   }
 
+  // ── Calendar day overlay ───────────────────────────────────────────────────
+  type DayOverlay = { dateStr: string; items: { name: string; categoryName: string }[] };
+  const [dayOverlay, setDayOverlay] = useState<DayOverlay | null>(null);
+
+  async function openDayOverlay(dateStr: string, isFuture: boolean) {
+    if (isFuture) return;
+    const supabase = createClient();
+    const { data } = await supabase
+      .from('instances')
+      .select('task:tasks(name, category:categories(name))')
+      .eq('user_id', userId)
+      .eq('status', 'completed')
+      .eq('actual_completion_date', dateStr);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const items = (data ?? []).map((r: any) => ({
+      name: (r.task?.name ?? '—') as string,
+      categoryName: (Array.isArray(r.task?.category) ? r.task.category[0]?.name : r.task?.category?.name) ?? '' as string,
+    }));
+    setDayOverlay({ dateStr, items });
+  }
+
   // ── Spending state ─────────────────────────────────────────────────────────
+  const [shelfCatFilter, setShelfCatFilter] = useState<string | null>(null);
+
   const [spendingOpen, setSpendingOpen]     = useState(false);
   const [spendingData, setSpendingData]     = useState<SpendingEntry[] | null>(null);
   const [plannedData, setPlannedData]       = useState<PlannedEntry[] | null>(null);
@@ -239,8 +286,8 @@ export default function DashboardClient({
   }
 
   useEffect(() => {
-    if (spendingOpen && spendingData === null) fetchSpending();
-  }, [spendingOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (spendingData === null) fetchSpending();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Mutations ──────────────────────────────────────────────────────────────
   function removeInstance(id: string) {
@@ -285,6 +332,7 @@ export default function DashboardClient({
       ? parseISO(instance.due_date_start)
       : new Date(completionDate + 'T00:00:00');
     const cost = completionCost !== '' ? Number(completionCost) : null;
+    const supabase = createClient();
     const { next } = await completeInstance(instance.id, instance.task as Task, date, cost);
     removeInstance(instance.id);
     if (next) {
@@ -295,6 +343,7 @@ export default function DashboardClient({
     }
     const routineId = (instance.task as unknown as { routine?: { id: string } }).routine?.id;
     if (routineId) detectRoutineConflicts(routineId).catch(console.error);
+    processInstanceKept(supabase, instance.id, instance.task!.id, instance.user_id).catch(console.error);
     setCompleteModal(null);
     setLoading(null);
   }
@@ -875,22 +924,6 @@ export default function DashboardClient({
       <div className="space-y-5">
         <p className="label-overline">Rhythm</p>
 
-        {/* Stats row */}
-        <div className="grid grid-cols-3 gap-2">
-          <div className="bg-stone border border-glow-border rounded-lg p-3 text-center">
-            <p className="font-display text-xl text-charcoal">{keptPct != null ? `${keptPct}%` : '—'}</p>
-            <p className="text-[10px] text-warm-light mt-0.5">kept</p>
-          </div>
-          <div className="bg-stone border border-glow-border rounded-lg p-3 text-center">
-            <p className="font-display text-xl text-charcoal">{streak}</p>
-            <p className="text-[10px] text-warm-light mt-0.5">day streak</p>
-          </div>
-          <div className="bg-stone border border-glow-border rounded-lg p-3 text-center">
-            <p className="font-display text-xl text-charcoal">{due.length}</p>
-            <p className="text-[10px] text-warm-light mt-0.5">refresh</p>
-          </div>
-        </div>
-
         {/* Heatmap: 12 weeks × 7 days */}
         <div>
           <div className="grid gap-[3px]" style={{ gridTemplateColumns: 'repeat(12, 1fr)' }}>
@@ -919,22 +952,28 @@ export default function DashboardClient({
           <p className="text-[10px] text-warm-light mt-1.5">12 weeks · today →</p>
         </div>
 
-        {/* Approaching maintenance */}
-        {approaching.length > 0 && (
-          <div>
-            <p className="label-overline mb-2">Coming up</p>
-            <div className="space-y-1.5">
-              {approaching.map((a, i) => (
-                <div key={i} className="flex items-center justify-between">
-                  <span className="text-xs text-warm-mid truncate pr-2">{a.task?.name ?? '—'}</span>
-                  <span className="text-[11px] text-warm-light flex-shrink-0">
-                    {format(parseISO(a.due_date_start), 'MMM d')}
-                  </span>
-                </div>
-              ))}
+        {/* Coming Up + Stats combined card */}
+        <div style={{ background: '#f6f1e6', border: '1px solid #cdc6b6', borderRadius: '10px', padding: '16px' }}>
+          <p className="label-overline mb-3">Coming up this week</p>
+          {approaching.length === 0 ? (
+            <p style={{ fontSize: '13px', color: '#a8a297', fontStyle: 'italic' }}>Nothing coming up this week.</p>
+          ) : (
+            <div>
+              {approaching.slice(0, 5).map((a, i) => {
+                const catName = a.task?.category?.name ?? '';
+                const catColor = getCategoryColor(catName).dot;
+                return (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: i < Math.min(approaching.length, 5) - 1 ? '1px solid #cdc6b6' : 'none' }}>
+                    <span style={{ fontSize: '12px', color: '#6b665e', flexShrink: 0, minWidth: '38px' }}>{format(parseISO(a.due_date_start), 'MMM d')}</span>
+                    <span style={{ flex: 1, fontSize: '13px', color: '#2b2823', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.task?.name ?? '—'}</span>
+                    <span style={{ fontSize: '11px', color: catColor, flexShrink: 0 }}>{catName || 'Other'}</span>
+                    <span style={{ fontSize: '14px', color: '#cdc6b6', flexShrink: 0 }}>›</span>
+                  </div>
+                );
+              })}
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     );
   }
@@ -1035,7 +1074,7 @@ export default function DashboardClient({
           </div>
           <div className="bg-stone border border-glow-border rounded-lg p-3 text-center">
             <p className="font-display text-xl text-charcoal">{due.length}</p>
-            <p className="text-[10px] text-warm-light mt-0.5">refresh</p>
+            <p className="text-[10px] text-warm-light mt-0.5">due</p>
           </div>
         </div>
       </div>
@@ -1265,6 +1304,7 @@ export default function DashboardClient({
 
           async function instantKeep() {
             setLoading(instance.id);
+            const supabase = createClient();
             const { next } = await completeInstance(instance.id, instance.task as Task, today(), null);
             removeInstance(instance.id);
             if (next) {
@@ -1275,6 +1315,7 @@ export default function DashboardClient({
             }
             const routineId = (instance.task as unknown as { routine?: { id: string } }).routine?.id;
             if (routineId) detectRoutineConflicts(routineId).catch(console.error);
+            processInstanceKept(supabase, instance.id, instance.task!.id, instance.user_id).catch(console.error);
             setLoading(null);
           }
 
@@ -1418,6 +1459,7 @@ export default function DashboardClient({
                 <div
                   key={idx}
                   title={dateStr}
+                  onClick={!isFuture ? () => openDayOverlay(dateStr, isFuture) : undefined}
                   style={{
                     aspectRatio: '1',
                     borderRadius: '6px',
@@ -1425,6 +1467,7 @@ export default function DashboardClient({
                     alignItems: 'center',
                     justifyContent: 'center',
                     backgroundColor: bg,
+                    cursor: !isFuture ? 'pointer' : 'default',
                   }}
                 >
                   <span style={{ fontSize: '13px', color, fontWeight, lineHeight: 1 }}>{day}</span>
@@ -1434,45 +1477,88 @@ export default function DashboardClient({
           </div>
         </div>
 
-        {/* Stats — three-box grid */}
-        <div className="grid grid-cols-3 gap-3 pt-2 border-t border-glow-border">
-          <div className="text-center">
-            <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '22px', color: '#2b2823', fontWeight: 400, lineHeight: 1 }}>
-              {keptPct != null ? `${keptPct}%` : '—'}
-            </p>
-            <p style={{ fontSize: '10px', color: '#a8a297', marginTop: '3px', letterSpacing: '0.06em' }}>kept</p>
-          </div>
-          <div className="text-center">
-            <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '22px', color: '#2b2823', fontWeight: 400, lineHeight: 1 }}>
-              {streak}
-            </p>
-            <p style={{ fontSize: '10px', color: '#a8a297', marginTop: '3px', letterSpacing: '0.06em' }}>day streak</p>
-          </div>
-          <div className="text-center">
-            <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '22px', color: '#c08a6e', fontWeight: 400, lineHeight: 1 }}>
-              {due.length}
-            </p>
-            <p style={{ fontSize: '10px', color: '#a8a297', marginTop: '3px', letterSpacing: '0.06em' }}>refresh</p>
-          </div>
-        </div>
+        {/* Spend section — inline, no card wrapper */}
+        {(() => {
+          const thisMonthStr = format(today(), 'yyyy-MM');
+          const entries = spendingData ?? [];
+          const planned = plannedData ?? [];
+          const actual = entries
+            .filter(e => e.actual_completion_date.startsWith(thisMonthStr))
+            .reduce((s, e) => s + e.cost, 0);
+          const projected = planned
+            .filter(p => p.due_date_start.startsWith(thisMonthStr) && p.task?.default_cost != null)
+            .reduce((s, p) => s + (p.task!.default_cost as number), 0);
+          const total = actual + projected;
+          return (
+            <div style={{ paddingTop: '12px', borderTop: '1px solid #cdc6b6' }}>
+              <p className="label-overline mb-3">This month · spend</p>
+              {spendingLoading ? (
+                <p style={{ fontSize: '12px', color: '#a8a297' }}>Loading…</p>
+              ) : total === 0 ? (
+                <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontStyle: 'italic', fontSize: '14px', color: '#a8a297', textAlign: 'center', padding: '8px 0' }}>
+                  No spend logged this month.
+                </p>
+              ) : (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+                    <div>
+                      <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '24px', color: '#2b2823', fontWeight: 400, lineHeight: 1 }}>${actual.toFixed(0)}</p>
+                      <p style={{ fontSize: '9px', color: '#a8a297', marginTop: '4px', letterSpacing: '0.12em', textTransform: 'uppercase' }}>actual</p>
+                    </div>
+                    <div>
+                      <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '24px', color: '#2b2823', fontWeight: 400, lineHeight: 1 }}>${projected.toFixed(0)}</p>
+                      <p style={{ fontSize: '9px', color: '#a8a297', marginTop: '4px', letterSpacing: '0.12em', textTransform: 'uppercase' }}>projected</p>
+                    </div>
+                    <div>
+                      <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '24px', color: '#2b2823', fontWeight: 400, lineHeight: 1 }}>${total.toFixed(0)}</p>
+                      <p style={{ fontSize: '9px', color: '#a8a297', marginTop: '4px', letterSpacing: '0.12em', textTransform: 'uppercase' }}>total</p>
+                    </div>
+                  </div>
+                  {/* SpendBar with custom legend */}
+                  <div>
+                    <div style={{ height: '8px', borderRadius: '4px', backgroundColor: '#cdc6b6', overflow: 'hidden', display: 'flex' }}>
+                      <div style={{ width: `${(actual / total) * 100}%`, height: '100%', backgroundColor: '#2b2823', transition: 'width 0.3s ease' }} />
+                      <div style={{ width: `${(projected / total) * 100}%`, height: '100%', backgroundColor: '#a8a297', transition: 'width 0.3s ease' }} />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '5px' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', color: '#a8a297' }}>
+                        <span style={{ width: '8px', height: '8px', borderRadius: '2px', backgroundColor: '#2b2823', display: 'inline-block' }} />
+                        Spent
+                      </span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', color: '#a8a297' }}>
+                        Projected
+                        <span style={{ width: '8px', height: '8px', borderRadius: '2px', backgroundColor: '#a8a297', display: 'inline-block' }} />
+                      </span>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })()}
 
-        {/* Approaching */}
-        {approaching.length > 0 && (
-          <div className="pt-4 border-t border-glow-border">
-            <p className="label-overline mb-2">Coming up</p>
-            <div className="space-y-1.5">
-              {approaching.map((a, i) => {
-                const daysUntil = differenceInDays(parseISO(a.due_date_start), today());
-                const when = daysUntil === 0 ? 'today' : daysUntil === 1 ? 'tomorrow' : `in ${daysUntil} days`;
+        {/* Coming Up this week */}
+        <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #cdc6b6' }}>
+          <p className="label-overline mb-3">Coming up this week</p>
+          {approaching.length === 0 ? (
+            <p style={{ fontSize: '13px', color: '#a8a297', fontStyle: 'italic' }}>Nothing coming up this week.</p>
+          ) : (
+            <div>
+              {approaching.slice(0, 5).map((a, i) => {
+                const catName = a.task?.category?.name ?? '';
+                const catColor = getCategoryColor(catName).dot;
                 return (
-                  <p key={i} className="text-xs text-warm-mid leading-snug">
-                    <span className="font-medium text-charcoal">{a.task?.name ?? '—'}</span>{' '}{when}.
-                  </p>
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 0', borderBottom: i < Math.min(approaching.length, 5) - 1 ? '1px solid #e8e2d5' : 'none' }}>
+                    <span style={{ fontSize: '12px', color: '#6b665e', flexShrink: 0, minWidth: '40px' }}>{format(parseISO(a.due_date_start), 'MMM d')}</span>
+                    <span style={{ flex: 1, fontSize: '13px', color: '#2b2823', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.task?.name ?? '—'}</span>
+                    <span style={{ fontSize: '11px', color: catColor, flexShrink: 0 }}>{catName || 'Other'}</span>
+                    <span style={{ fontSize: '14px', color: '#cdc6b6', flexShrink: 0 }}>›</span>
+                  </div>
                 );
               })}
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     );
   }
@@ -1593,12 +1679,6 @@ export default function DashboardClient({
               </span>
             )}
             <div className="ml-auto flex items-center gap-2">
-              <button
-                onClick={() => { setSpendingOpen(o => !o); if (spendingData === null) fetchSpending(); }}
-                className="text-sm border border-glow-border text-warm-mid rounded-pill px-4 py-1.5 hover:bg-taupe transition-colors"
-              >
-                This month
-              </button>
               <Link href="/tasks/new" className="text-sm bg-charcoal text-cream font-medium rounded-pill px-4 py-1.5 hover:bg-charcoal/90">
                 + Log a ritual
               </Link>
@@ -1606,21 +1686,73 @@ export default function DashboardClient({
           </div>
         </header>
 
+        {/* Product alerts banner */}
+        {productAlerts.length > 0 && (
+          <div style={{ padding: '10px 32px 0', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {productAlerts.map(alert => (
+              <div key={alert.id} style={{ backgroundColor: 'rgba(192,138,110,0.08)', border: '1px solid #b5a89a', borderRadius: '10px', padding: '10px 14px', fontSize: '12px', color: '#6b665e' }}>
+                {alert.alert_type === 'last_use'
+                  ? `${alert.product?.name ?? 'A product'} is running low — today's ${alert.task?.name ?? 'ritual'} may use the last of it.`
+                  : `${alert.task?.name ?? 'A ritual'} is due but it looks like you're out of ${alert.product?.name ?? 'a product'}.`}
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Three equal cards */}
         <div className="flex-1 min-h-0 flex gap-5 px-8 py-6">
 
           {/* Card: In sequence */}
-          <div
-            className="flex-1 min-w-0 flex flex-col bg-stone border border-glow-border rounded-2xl overflow-hidden"
-            style={{ boxShadow: '0 1px 3px rgba(43,40,35,0.06)' }}
-          >
-            <div className="flex-shrink-0 px-5 pt-5 pb-3 border-b border-glow-border">
-              <p className="label-overline">In sequence</p>
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              {InSequenceList()}
-            </div>
-          </div>
+          {(() => {
+            const seqTotal = completedCount + skippedCount;
+            const seqKeptPct = seqTotal > 0 ? Math.round((completedCount / seqTotal) * 100) : null;
+            const seqStreak = computeStreak(heatmapDates);
+            return (
+              <div
+                className="flex-1 min-w-0 flex flex-col bg-stone border border-glow-border rounded-2xl overflow-hidden"
+                style={{ boxShadow: '0 1px 3px rgba(43,40,35,0.06)' }}
+              >
+                {/* Card header */}
+                <div className="flex-shrink-0 px-5 pt-5 pb-3 border-b border-glow-border flex items-center justify-between">
+                  <p className="label-overline">In sequence</p>
+                  {instances.length > 0 && (
+                    <p style={{ fontSize: '9px', color: '#a8a297', letterSpacing: '0.14em', textTransform: 'uppercase' }}>
+                      {instances.length} ritual{instances.length !== 1 ? 's' : ''}
+                    </p>
+                  )}
+                </div>
+
+                {/* Stat boxes */}
+                <div className="flex-shrink-0 px-5 py-3" style={{ borderBottom: '1px solid #cdc6b6' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                    <div style={{ textAlign: 'center' }}>
+                      <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '22px', color: '#2b2823', fontWeight: 400, lineHeight: 1 }}>
+                        {seqKeptPct != null ? `${seqKeptPct}%` : '—'}
+                      </p>
+                      <p style={{ fontSize: '9px', color: '#a8a297', marginTop: '4px', letterSpacing: '0.12em', textTransform: 'uppercase' }}>kept</p>
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '22px', color: '#2b2823', fontWeight: 400, lineHeight: 1 }}>
+                        {seqStreak}
+                      </p>
+                      <p style={{ fontSize: '9px', color: '#a8a297', marginTop: '4px', letterSpacing: '0.12em', textTransform: 'uppercase' }}>streak</p>
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '22px', color: '#c08a6e', fontWeight: 400, lineHeight: 1 }}>
+                        {due.length}
+                      </p>
+                      <p style={{ fontSize: '9px', color: '#a8a297', marginTop: '4px', letterSpacing: '0.12em', textTransform: 'uppercase' }}>due</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Ritual list */}
+                <div className="flex-1 overflow-y-auto">
+                  {InSequenceList()}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Card: Rhythm */}
           <div
@@ -1636,28 +1768,151 @@ export default function DashboardClient({
           </div>
 
           {/* Card: Shelf */}
-          <div
-            className="flex-1 min-w-0 flex flex-col bg-stone border border-glow-border rounded-2xl overflow-hidden"
-            style={{ boxShadow: '0 1px 3px rgba(43,40,35,0.06)' }}
-          >
-            <div className="flex-shrink-0 px-5 pt-5 pb-3 border-b border-glow-border flex items-center justify-between">
-              <p className="label-overline">Shelf</p>
-              <Link href="/tasks" className="text-[11px] text-warm-light hover:text-charcoal transition-colors">
-                See all →
-              </Link>
-            </div>
-            <div className="flex-1 flex items-center justify-center">
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px', padding: '24px', textAlign: 'center' }}>
-                <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontStyle: 'italic', fontSize: '20px', color: '#2b2823' }}>
-                  Product tracking coming soon.
-                </p>
-                <div style={{ width: '40px', height: '1px', backgroundColor: '#cdc6b6' }} />
-                <p style={{ fontSize: '10px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#a8a297' }}>
-                  Your shelf will live here
-                </p>
+          {(() => {
+            const todayDateStr = format(today(), 'yyyy-MM-dd');
+            const ahead30Str = format(new Date(Date.now() + 30 * 86400000), 'yyyy-MM-dd');
+
+            // Derive top-level category pills from all shelf products
+            const topCats: { id: string; name: string }[] = [];
+            if (shelfProductCategories.length > 0) {
+              const seen = new Set<string>();
+              for (const p of shelfProducts) {
+                if (!p.product_category_id) continue;
+                const cat = shelfProductCategories.find(c => c.id === p.product_category_id);
+                const topCat = cat?.parent_id
+                  ? shelfProductCategories.find(c => c.id === cat.parent_id)
+                  : cat;
+                if (topCat && !seen.has(topCat.id)) { seen.add(topCat.id); topCats.push({ id: topCat.id, name: topCat.name }); }
+              }
+            }
+
+            // Filter by selected top-level category
+            const filtered = shelfCatFilter
+              ? shelfProducts.filter(p => {
+                  const cat = shelfProductCategories.find(c => c.id === p.product_category_id);
+                  const topId = cat?.parent_id
+                    ? shelfProductCategories.find(c => c.id === cat.parent_id)?.id
+                    : cat?.id;
+                  return topId === shelfCatFilter;
+                })
+              : shelfProducts;
+
+            // Sort by urgency (critical first, healthy last)
+            const sorted = [...filtered].sort((a, b) =>
+              urgencyScore(a, todayDateStr, ahead30Str) - urgencyScore(b, todayDateStr, ahead30Str)
+            );
+
+            // Helper: get category dot color
+            function getDotColor(p: Product): string {
+              const cat = shelfProductCategories.find(c => c.id === p.product_category_id);
+              const topCat = cat?.parent_id ? shelfProductCategories.find(c => c.id === cat.parent_id) : cat;
+              return getCategoryColor(topCat?.name ?? '').dot;
+            }
+
+            return (
+              <div
+                className="flex-1 min-w-0 flex flex-col bg-stone border border-glow-border rounded-2xl overflow-hidden"
+                style={{ boxShadow: '0 1px 3px rgba(43,40,35,0.06)' }}
+              >
+                <div className="flex-shrink-0 px-5 pt-5 pb-3 border-b border-glow-border flex items-center justify-between">
+                  <p className="label-overline">Shelf</p>
+                  <Link href="/shelf" className="text-[11px] text-warm-light hover:text-charcoal transition-colors">
+                    See all →
+                  </Link>
+                </div>
+
+                {/* Category filter pills */}
+                {topCats.length > 1 && (
+                  <div style={{ padding: '8px 20px 0', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    <button
+                      onClick={() => setShelfCatFilter(null)}
+                      style={{
+                        fontSize: '10px', letterSpacing: '0.10em', textTransform: 'uppercase', padding: '3px 10px',
+                        borderRadius: '100px', border: '1px solid',
+                        borderColor: shelfCatFilter === null ? '#2b2823' : '#cdc6b6',
+                        background: shelfCatFilter === null ? '#2b2823' : 'transparent',
+                        color: shelfCatFilter === null ? '#efe9dd' : '#6b665e',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      All
+                    </button>
+                    {topCats.map(tc => (
+                      <button
+                        key={tc.id}
+                        onClick={() => setShelfCatFilter(shelfCatFilter === tc.id ? null : tc.id)}
+                        style={{
+                          fontSize: '10px', letterSpacing: '0.10em', textTransform: 'uppercase', padding: '3px 10px',
+                          borderRadius: '100px', border: '1px solid',
+                          borderColor: shelfCatFilter === tc.id ? '#2b2823' : '#cdc6b6',
+                          background: shelfCatFilter === tc.id ? '#2b2823' : 'transparent',
+                          color: shelfCatFilter === tc.id ? '#efe9dd' : '#6b665e',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {tc.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {shelfProducts.length === 0 ? (
+                  <div className="flex-1 flex items-center justify-center px-5 py-8">
+                    <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontStyle: 'italic', fontSize: '18px', color: '#a8a297', textAlign: 'center' }}>
+                      Your shelf is empty.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex-1 px-5 py-2 overflow-y-auto">
+                    {sorted.map((p, i) => {
+                      const pct = p.remaining_amount != null && p.container_size && p.container_size > 0
+                        ? Math.min(1, Math.max(0, p.remaining_amount / p.container_size)) : null;
+                      const needsRestock = p.is_depleted || (pct != null && pct < 0.2);
+                      const dotColor = getDotColor(p);
+
+                      // Inline bar fill color
+                      let barFill = '#2b2823';
+                      if (pct != null) {
+                        if (pct <= 0.1) barFill = '#c08a6e';
+                        else if (pct <= 0.3) barFill = '#c08a6e';
+                        else if (pct <= 0.6) barFill = '#d4a478';
+                      }
+                      if (p.is_depleted) barFill = '#c08a6e';
+
+                      return (
+                        <div
+                          key={p.id}
+                          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 0', borderBottom: i < sorted.length - 1 ? '1px solid #e8e2d5' : 'none' }}
+                        >
+                          {/* Dot */}
+                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: dotColor, flexShrink: 0 }} />
+                          {/* Name */}
+                          <span style={{ flex: 1, fontSize: '13px', color: '#2b2823', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{p.name}</span>
+                          {/* Inline bar + pct */}
+                          {pct != null ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
+                              <div style={{ width: '60px', height: '6px', borderRadius: '3px', backgroundColor: '#cdc6b6', overflow: 'hidden', flexShrink: 0 }}>
+                                <div style={{ height: '100%', width: `${pct * 100}%`, borderRadius: '3px', backgroundColor: barFill }} />
+                              </div>
+                              <span style={{ fontSize: '11px', color: '#a8a297', fontVariantNumeric: 'tabular-nums', minWidth: '28px', textAlign: 'right' }}>
+                                {Math.round(pct * 100)}%
+                              </span>
+                            </div>
+                          ) : p.is_depleted ? (
+                            <span style={{ fontSize: '11px', color: '#c08a6e', flexShrink: 0 }}>Out</span>
+                          ) : null}
+                          {/* Restock link */}
+                          {needsRestock && (
+                            <Link href="/shelf" style={{ fontSize: '11px', color: '#c08a6e', flexShrink: 0 }}>Restock</Link>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            </div>
-          </div>
+            );
+          })()}
 
         </div>
 
@@ -1695,6 +1950,18 @@ export default function DashboardClient({
       {/* ── Mobile: Atrium layout ─────────────────────────────────────────── */}
       <div className="lg:hidden">
         {AtriumHeader()}
+        {/* Product alerts banner — mobile */}
+        {productAlerts.length > 0 && (
+          <div style={{ padding: '10px 20px 0', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {productAlerts.map(alert => (
+              <div key={alert.id} style={{ backgroundColor: 'rgba(192,138,110,0.08)', border: '1px solid #b5a89a', borderRadius: '10px', padding: '10px 14px', fontSize: '12px', color: '#6b665e' }}>
+                {alert.alert_type === 'last_use'
+                  ? `${alert.product?.name ?? 'A product'} is running low — today's ${alert.task?.name ?? 'ritual'} may use the last of it.`
+                  : `${alert.task?.name ?? 'A ritual'} is due but it looks like you're out of ${alert.product?.name ?? 'a product'}.`}
+              </div>
+            ))}
+          </div>
+        )}
         {AtriumCategoryGrid()}
         {AtriumStatsRow()}
         {AtriumHeatmap()}
@@ -1743,6 +2010,48 @@ export default function DashboardClient({
       {SnoozeModal()}
       {AdjustEventModal()}
       {DeleteModal()}
+
+      {/* Calendar day overlay */}
+      {dayOverlay && (
+        <div
+          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(43,40,35,0.35)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}
+          onClick={() => setDayOverlay(null)}
+        >
+          <div
+            style={{ backgroundColor: '#f6f1e6', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '340px', boxShadow: '0 8px 32px rgba(43,40,35,0.14)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+              <p style={{ fontSize: '13px', fontWeight: 500, color: '#2b2823' }}>
+                {format(parseISO(dayOverlay.dateStr), 'EEEE, MMMM d')}
+              </p>
+              <button
+                type="button"
+                onClick={() => setDayOverlay(null)}
+                style={{ background: 'none', border: 'none', fontSize: '18px', color: '#a8a297', cursor: 'pointer', lineHeight: 1 }}
+              >
+                ×
+              </button>
+            </div>
+            {dayOverlay.items.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {dayOverlay.items.map((item, i) => {
+                  const catColor = getCategoryColor(item.categoryName).dot;
+                  return (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span style={{ color: '#8ea394', fontSize: '14px' }}>✓</span>
+                      <div style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: catColor, flexShrink: 0 }} />
+                      <span style={{ fontSize: '13px', color: '#2b2823' }}>{item.name}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p style={{ fontSize: '13px', color: '#a8a297', fontStyle: 'italic' }}>Nothing logged for this day.</p>
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 }
