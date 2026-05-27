@@ -59,6 +59,8 @@ interface Props {
   timelineTasks: TimelineTask[];
   categories: Category[];
   userId: string;
+  tasksWithNoInstances?: string[];
+  setupBanner?: string | null;
 }
 
 export default function RoutineDetailClient({
@@ -70,6 +72,8 @@ export default function RoutineDetailClient({
   timelineTasks,
   categories,
   userId,
+  tasksWithNoInstances = [],
+  setupBanner = null,
 }: Props) {
   const router = useRouter();
 
@@ -85,6 +89,9 @@ export default function RoutineDetailClient({
   const [addingTaskId, setAddingTaskId] = useState<string | null>(null);
   const [suggestionBanner, setSuggestionBanner] = useState<string | null>(null);
   const [softHints, setSoftHints] = useState<SoftHint[]>([]);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+
+  const noInstanceSet = new Set(tasksWithNoInstances);
 
   useEffect(() => { setLocalConflicts(conflicts); }, [conflicts]);
 
@@ -267,8 +274,25 @@ export default function RoutineDetailClient({
   const hasMultipleTasks = tasks.length >= 2;
   const showPendingConflicts = conflictIntent !== 'independent' && localConflicts.length > 0;
 
+  const isRollingSetup = setupBanner === 'rolling' && !bannerDismissed && noInstanceSet.size > 0;
+  const isCountdownSetup = setupBanner && setupBanner !== 'rolling' && !bannerDismissed;
+
   return (
     <div className="space-y-6">
+      {/* Template setup banner */}
+      {isCountdownSetup && (
+        <div style={{ backgroundColor: '#f0f5f1', border: '1px solid #8ea394', borderRadius: '10px', padding: '14px 16px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+          <p style={{ fontSize: '13px', color: '#6b665e', lineHeight: 1.5 }}>{setupBanner}</p>
+          <button type="button" onClick={() => setBannerDismissed(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#a8a297', fontSize: '16px', lineHeight: 1, flexShrink: 0, padding: '2px' }}>✕</button>
+        </div>
+      )}
+      {isRollingSetup && (
+        <div style={{ backgroundColor: '#f6f1e6', border: '1px solid #cdc6b6', borderRadius: '10px', padding: '14px 16px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+          <p style={{ fontSize: '13px', color: '#6b665e', lineHeight: 1.5 }}>Set a start date for each ritual to begin scheduling.</p>
+          <button type="button" onClick={() => setBannerDismissed(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#a8a297', fontSize: '16px', lineHeight: 1, flexShrink: 0, padding: '2px' }}>✕</button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-3 min-w-0">
@@ -462,28 +486,57 @@ export default function RoutineDetailClient({
         {tasks.length === 0 ? (
           <p className="text-sm text-warm-light text-center py-4">No rituals in this routine yet.</p>
         ) : (
-          <div className="space-y-2">
-            {tasks.map(t => (
-              <div
-                key={t.id}
-                className="flex items-center justify-between bg-stone border border-glow-border rounded-lg shadow-card px-4 py-3"
-              >
-                <Link href={`/tasks/${t.id}`} className="flex items-center gap-2 min-w-0 flex-1">
-                  <span
-                    className="w-2 h-2 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: getCategoryColor((t as Task & { category?: { name: string } }).category?.name ?? '').dot }}
-                  />
-                  <span className="text-sm font-medium text-charcoal truncate">{t.name}</span>
-                </Link>
-                <button
-                  onClick={() => handleRemoveTask(t.id)}
-                  disabled={removingTaskId === t.id}
-                  className="text-xs text-warm-light hover:text-charcoal transition-colors flex-shrink-0 ml-3 disabled:opacity-50"
+          <div style={{ borderTop: '1px solid #cdc6b6' }}>
+            {tasks.map(t => {
+              const needsSetup = noInstanceSet.has(t.id);
+              const catName = (t as Task & { category?: { name: string } }).category?.name ?? '';
+              const intervalLabel = t.interval_min_days === t.interval_max_days
+                ? `every ${t.interval_min_days} days`
+                : `every ${t.interval_min_days}–${t.interval_max_days} days`;
+              return (
+                <div
+                  key={t.id}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 0', borderBottom: '1px solid #cdc6b6', gap: '12px' }}
                 >
-                  {removingTaskId === t.id ? '…' : 'Remove'}
-                </button>
-              </div>
-            ))}
+                  <Link href={`/tasks/${t.id}`} style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1, textDecoration: 'none' }}>
+                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', flexShrink: 0, backgroundColor: getCategoryColor(catName).dot }} />
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ fontSize: '14px', fontWeight: 500, color: '#2b2823', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</p>
+                      <p style={{ fontSize: '11px', color: '#a8a297', marginTop: '1px' }}>
+                        {catName ? `${catName} · ` : ''}{intervalLabel}
+                      </p>
+                    </div>
+                  </Link>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                    {needsSetup && (
+                      <Link
+                        href={`/tasks/${t.id}/edit`}
+                        style={{
+                          fontSize: '11px',
+                          fontWeight: 500,
+                          color: '#2b2823',
+                          border: '1px solid #cdc6b6',
+                          backgroundColor: 'transparent',
+                          borderRadius: '100px',
+                          padding: '3px 10px',
+                          textDecoration: 'none',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        Set start date
+                      </Link>
+                    )}
+                    <button
+                      onClick={() => handleRemoveTask(t.id)}
+                      disabled={removingTaskId === t.id}
+                      style={{ fontSize: '11px', color: '#a8a297', background: 'none', border: 'none', cursor: 'pointer', padding: 0, opacity: removingTaskId === t.id ? 0.4 : 1 }}
+                    >
+                      {removingTaskId === t.id ? '…' : 'Remove'}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </section>

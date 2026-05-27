@@ -95,7 +95,7 @@ export default async function RoutineTemplatesPage() {
 function TemplateCard({ template: t, isOwn }: { template: Routine; isOwn?: boolean }) {
   return (
     <Link
-      href={`/routines/templates/${t.id}`}
+      href={`/routines/new/from-template/${t.id}`}
       className="flex items-center justify-between bg-stone border border-glow-border rounded-lg shadow-card px-4 py-3 card-lift"
     >
       <div className="flex items-center gap-3 min-w-0">

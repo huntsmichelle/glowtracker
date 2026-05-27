@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
+import { format, parseISO } from 'date-fns';
 import type { Routine, Task, Category } from '@/types';
 import RoutineDetailClient from '@/components/RoutineDetailClient';
 
@@ -8,10 +9,12 @@ export const dynamic = 'force-dynamic';
 
 interface Props {
   params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string>>;
 }
 
-export default async function RoutineDetailPage({ params }: Props) {
+export default async function RoutineDetailPage({ params, searchParams }: Props) {
   const { id } = await params;
+  const sp = await searchParams;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -77,9 +80,7 @@ export default async function RoutineDetailPage({ params }: Props) {
 
   const tasks = (tasksRes.data ?? []) as Task[];
 
-  // Ensure routine_task_pairs records exist for every task combination.
-  // Tasks added before pair records were introduced (or via older code paths)
-  // may be missing rows, which causes conflict detection to silently skip them.
+  // Ensure routine_task_pairs records exist for every task combination
   const existingPairKeys = new Set(
     (pairsRes.data ?? []).map(
       (p: { task_a_id: string; task_b_id: string }) => `${p.task_a_id}|${p.task_b_id}`
@@ -115,7 +116,6 @@ export default async function RoutineDetailPage({ params }: Props) {
     is_projected: boolean;
   };
 
-  // Fetch timeline instances for each task in the routine
   const taskIds = tasks.map(t => t.id);
   let timelineInstances: TimelineInst[] = [];
   if (taskIds.length) {
@@ -142,6 +142,25 @@ export default async function RoutineDetailPage({ params }: Props) {
     instances: instancesByTask[t.id] ?? [],
   }));
 
+  // Tasks without any upcoming instances (need "Set start date")
+  const tasksWithNoInstances = new Set(
+    taskIds.filter(tid => !instancesByTask[tid]?.length)
+  );
+
+  // Build setup banner from query params
+  let setupBanner: string | null = null;
+  const fromTemplate = sp.fromTemplate;
+  if (fromTemplate === 'countdown') {
+    const eventLabel = sp.event ? decodeURIComponent(sp.event) : null;
+    const dateLabel = sp.date
+      ? (() => { try { return format(parseISO(decodeURIComponent(sp.date)), 'MMMM d, yyyy'); } catch { return null; } })()
+      : null;
+    const n = tasks.length;
+    setupBanner = `All ${n} ritual${n !== 1 ? 's' : ''} have been scheduled counting back from ${eventLabel ? `${eventLabel} (${dateLabel ?? ''})` : (dateLabel ?? 'your target date')}. Review your timeline below.`;
+  } else if (fromTemplate === 'rolling') {
+    setupBanner = 'rolling';
+  }
+
   return (
     <div className="max-w-2xl mx-auto px-5 py-8 space-y-1">
       <div className="flex items-center gap-2 mb-4">
@@ -161,6 +180,8 @@ export default async function RoutineDetailPage({ params }: Props) {
         timelineTasks={timelineTasks}
         categories={(categoriesRes.data ?? []) as Category[]}
         userId={user.id}
+        tasksWithNoInstances={[...tasksWithNoInstances]}
+        setupBanner={setupBanner}
       />
     </div>
   );

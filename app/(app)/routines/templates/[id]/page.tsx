@@ -2,7 +2,6 @@ import { createClient } from '@/lib/supabase/server';
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import type { Routine, Task } from '@/types';
-import RoutineFromTemplateClient from '@/components/RoutineFromTemplateClient';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,11 +16,12 @@ export default async function RoutineTemplateDetailPage({ params }: Props) {
 
   if (!user) redirect('/login');
 
+  // Allow system templates (any user) and user's own templates
   const { data: template } = await supabase
     .from('routines')
     .select('*, tasks(*)')
     .eq('id', id)
-    .eq('user_id', user.id)
+    .or(`is_system_template.eq.true,user_id.eq.${user.id}`)
     .eq('is_template', true)
     .single();
 
@@ -32,13 +32,9 @@ export default async function RoutineTemplateDetailPage({ params }: Props) {
   return (
     <div className="max-w-2xl mx-auto px-5 py-8 space-y-6">
       <div className="flex items-center gap-2">
-        <Link href="/routines" className="text-sm text-warm-light hover:text-charcoal">
-          Routines
-        </Link>
+        <Link href="/routines" className="text-sm text-warm-light hover:text-charcoal">Routines</Link>
         <span className="text-warm-light">/</span>
-        <Link href="/routines/templates" className="text-sm text-warm-light hover:text-charcoal">
-          Templates
-        </Link>
+        <Link href="/routines/templates" className="text-sm text-warm-light hover:text-charcoal">Templates</Link>
         <span className="text-warm-light">/</span>
         <span className="text-sm text-warm-mid truncate">{t.name}</span>
       </div>
@@ -48,8 +44,8 @@ export default async function RoutineTemplateDetailPage({ params }: Props) {
         <h1 className="font-display text-3xl text-charcoal">{t.name}</h1>
       </div>
 
-      {t.description && (
-        <p className="text-sm text-warm-mid">{t.description}</p>
+      {(t.template_description ?? t.description) && (
+        <p className="text-sm text-warm-mid">{t.template_description ?? t.description}</p>
       )}
 
       {(t.tasks ?? []).length > 0 && (
@@ -66,7 +62,26 @@ export default async function RoutineTemplateDetailPage({ params }: Props) {
         </div>
       )}
 
-      <RoutineFromTemplateClient template={t} />
+      <div className="pt-4 border-t border-glow-border flex items-center justify-between">
+        <Link href="/routines/templates" className="text-sm text-warm-light hover:text-charcoal">
+          ← All templates
+        </Link>
+        <Link
+          href={`/routines/new/from-template/${t.id}`}
+          style={{
+            border: '1px solid #2b2823',
+            backgroundColor: 'transparent',
+            color: '#2b2823',
+            fontSize: '13px',
+            fontWeight: 500,
+            borderRadius: '100px',
+            padding: '7px 20px',
+            textDecoration: 'none',
+          }}
+        >
+          Use template →
+        </Link>
+      </div>
     </div>
   );
 }

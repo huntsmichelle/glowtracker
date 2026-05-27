@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
 
 export interface TemplateItem {
   id: string;
@@ -59,10 +58,9 @@ function FallbackIcon() {
   );
 }
 
-export default function TemplateGallery({ templates, userId }: Props) {
+export default function TemplateGallery({ templates }: Props) {
   const router = useRouter();
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
-  const [usingId, setUsingId] = useState<string | null>(null);
 
   // Group by category
   const categoryMap = new Map<string, TemplateItem[]>();
@@ -72,63 +70,7 @@ export default function TemplateGallery({ templates, userId }: Props) {
     categoryMap.get(cat)!.push(t);
   }
   const categories = [...categoryMap.keys()];
-
   const overlayTemplates = activeCategory ? (categoryMap.get(activeCategory) ?? []) : [];
-
-  async function handleUseTemplate(template: TemplateItem) {
-    setUsingId(template.id);
-    const supabase = createClient();
-
-    // Fetch the full template routine + its tasks
-    const { data: srcRoutine } = await supabase
-      .from('routines')
-      .select('*')
-      .eq('id', template.id)
-      .single();
-
-    if (!srcRoutine) { setUsingId(null); return; }
-
-    const { data: newRoutine } = await supabase
-      .from('routines')
-      .insert({
-        user_id: userId,
-        name: srcRoutine.name,
-        description: srcRoutine.description,
-        color: srcRoutine.color,
-        conflict_intent: srcRoutine.conflict_intent,
-        is_template: false,
-        is_system_template: false,
-      })
-      .select()
-      .single();
-
-    if (!newRoutine) { setUsingId(null); return; }
-
-    const { data: srcTasks } = await supabase
-      .from('tasks')
-      .select('*')
-      .eq('routine_id', template.id)
-      .eq('is_active', true);
-
-    if (srcTasks && srcTasks.length > 0) {
-      await supabase.from('tasks').insert(
-        srcTasks.map(t => ({
-          user_id: userId,
-          routine_id: newRoutine.id,
-          name: t.name,
-          description: t.description,
-          category_id: t.category_id,
-          interval_min_days: t.interval_min_days,
-          interval_max_days: t.interval_max_days,
-          mode: t.mode,
-          frequency_type: t.frequency_type,
-          is_active: true,
-        }))
-      );
-    }
-
-    router.push(`/routines/${newRoutine.id}`);
-  }
 
   if (templates.length === 0) return null;
 
@@ -246,8 +188,7 @@ export default function TemplateGallery({ templates, userId }: Props) {
                   </div>
                   <button
                     type="button"
-                    onClick={() => handleUseTemplate(t)}
-                    disabled={usingId === t.id}
+                    onClick={() => router.push(`/routines/new/from-template/${t.id}`)}
                     style={{
                       flexShrink: 0,
                       fontSize: '12px',
@@ -257,12 +198,11 @@ export default function TemplateGallery({ templates, userId }: Props) {
                       backgroundColor: 'transparent',
                       borderRadius: '100px',
                       padding: '5px 14px',
-                      cursor: usingId === t.id ? 'not-allowed' : 'pointer',
-                      opacity: usingId === t.id ? 0.5 : 1,
+                      cursor: 'pointer',
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    {usingId === t.id ? 'Creating…' : 'Use template'}
+                    Use template
                   </button>
                 </div>
               ))}
