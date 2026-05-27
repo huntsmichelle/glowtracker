@@ -219,34 +219,71 @@ export default function DashboardClient({
     if (viewMode === 'calendar') fetchCalendar(calYear, calMonth);
   }, [viewMode, calYear, calMonth, fetchCalendar]);
 
+  // ── Calendar month navigation (limits: current month → +6 months) ──────────
+  const calNow = today();
+  const calNowMonth = calNow.getMonth() + 1; // 1-indexed
+  const calNowYear  = calNow.getFullYear();
+
+  function calCanPrev(): boolean {
+    return !(calMonth === calNowMonth && calYear === calNowYear);
+  }
+
+  function calCanNext(): boolean {
+    const maxDate = new Date(calNowYear, calNowMonth - 1 + 6, 1);
+    const display = new Date(calYear, calMonth - 1, 1);
+    return display < maxDate;
+  }
+
   function changeCalMonth(delta: number) {
     let m = calMonth + delta;
     let y = calYear;
     if (m > 12) { m = 1; y++; }
     if (m < 1)  { m = 12; y--; }
+    // Enforce limits
+    if (y < calNowYear || (y === calNowYear && m < calNowMonth)) return;
+    const maxDate = new Date(calNowYear, calNowMonth - 1 + 6, 1);
+    if (new Date(y, m - 1, 1) > maxDate) return;
     setCalMonth(m);
     setCalYear(y);
   }
 
   // ── Calendar day overlay ───────────────────────────────────────────────────
-  type DayOverlay = { dateStr: string; items: { name: string; categoryName: string }[] };
+  type DayOverlay = {
+    dateStr: string;
+    items: { name: string; categoryName: string }[];
+    isFuture: boolean;
+  };
   const [dayOverlay, setDayOverlay] = useState<DayOverlay | null>(null);
 
-  async function openDayOverlay(dateStr: string, isFuture: boolean) {
-    if (isFuture) return;
+  async function openDayOverlay(dateStr: string, overlayFuture: boolean) {
     const supabase = createClient();
-    const { data } = await supabase
-      .from('instances')
-      .select('task:tasks(name, category:categories(name))')
-      .eq('user_id', userId)
-      .eq('status', 'completed')
-      .eq('actual_completion_date', dateStr);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const items = (data ?? []).map((r: any) => ({
-      name: (r.task?.name ?? '—') as string,
-      categoryName: (Array.isArray(r.task?.category) ? r.task.category[0]?.name : r.task?.category?.name) ?? '' as string,
-    }));
-    setDayOverlay({ dateStr, items });
+    if (overlayFuture) {
+      const { data } = await supabase
+        .from('instances')
+        .select('task:tasks(name, category:categories(name))')
+        .eq('user_id', userId)
+        .in('status', ['upcoming', 'projected', 'snoozed'])
+        .eq('due_date_start', dateStr);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const items = (data ?? []).map((r: any) => ({
+        name: (r.task?.name ?? '—') as string,
+        categoryName: (Array.isArray(r.task?.category) ? r.task.category[0]?.name : r.task?.category?.name) ?? '' as string,
+      }));
+      setDayOverlay({ dateStr, items, isFuture: true });
+    } else {
+      const { data } = await supabase
+        .from('instances')
+        .select('task:tasks(name, category:categories(name))')
+        .eq('user_id', userId)
+        .eq('status', 'completed')
+        .eq('actual_completion_date', dateStr);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const items = (data ?? []).map((r: any) => ({
+        name: (r.task?.name ?? '—') as string,
+        categoryName: (Array.isArray(r.task?.category) ? r.task.category[0]?.name : r.task?.category?.name) ?? '' as string,
+      }));
+      setDayOverlay({ dateStr, items, isFuture: false });
+    }
   }
 
   // ── Spending state ─────────────────────────────────────────────────────────
@@ -674,10 +711,13 @@ export default function DashboardClient({
   }
 
   function CalendarView() {
-    const daysInMonth   = new Date(calYear, calMonth, 0).getDate();
-    const firstWeekday  = new Date(calYear, calMonth - 1, 1).getDay();
-    const todayStr      = format(today(), 'yyyy-MM-dd');
-    const monthLabel    = new Date(calYear, calMonth - 1).toLocaleString('default', { month: 'long', year: 'numeric' });
+    const daysInMonth  = new Date(calYear, calMonth, 0).getDate();
+    const firstWeekday = new Date(calYear, calMonth - 1, 1).getDay();
+    const todayStr     = format(today(), 'yyyy-MM-dd');
+    const monthLabel   = new Date(calYear, calMonth - 1).toLocaleString('default', { month: 'long', year: 'numeric' });
+
+    const isPastMonth   = calYear < calNowYear || (calYear === calNowYear && calMonth < calNowMonth);
+    const isFutureMonth = calYear > calNowYear || (calYear === calNowYear && calMonth > calNowMonth);
 
     const byDate: Record<string, InstanceWithTask[]> = {};
     for (const inst of calInstances) {
@@ -694,12 +734,33 @@ export default function DashboardClient({
     ];
     while (cells.length % 7 !== 0) cells.push(null);
 
+    const prevEnabled = calCanPrev();
+    const nextEnabled = calCanNext();
+
     return (
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <button onClick={() => changeCalMonth(-1)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-taupe text-warm-mid">←</button>
-          <h2 className="text-sm font-medium text-charcoal">{monthLabel}</h2>
-          <button onClick={() => changeCalMonth(1)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-taupe text-warm-mid">→</button>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <button
+            onClick={() => prevEnabled && changeCalMonth(-1)}
+            disabled={!prevEnabled}
+            style={{
+              background: 'none', border: 'none', padding: '4px 8px', lineHeight: 1,
+              fontSize: '16px', cursor: prevEnabled ? 'pointer' : 'default',
+              color: prevEnabled ? '#6b665e' : '#a8a297',
+            }}
+          >←</button>
+          <span style={{ fontFamily: "'EB Garamond', serif", fontSize: '15px', color: '#2b2823' }}>
+            {monthLabel}
+          </span>
+          <button
+            onClick={() => nextEnabled && changeCalMonth(1)}
+            disabled={!nextEnabled}
+            style={{
+              background: 'none', border: 'none', padding: '4px 8px', lineHeight: 1,
+              fontSize: '16px', cursor: nextEnabled ? 'pointer' : 'default',
+              color: nextEnabled ? '#6b665e' : '#a8a297',
+            }}
+          >→</button>
         </div>
         <div className="grid grid-cols-7 gap-1">
           {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(d => (
@@ -712,12 +773,60 @@ export default function DashboardClient({
           <div className="grid grid-cols-7 gap-1">
             {cells.map((day, i) => {
               if (!day) return <div key={i} />;
-              const dateStr = `${calYear}-${String(calMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+              const dateStr  = `${calYear}-${String(calMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
               const dayInsts = byDate[dateStr] ?? [];
               const isToday  = dateStr === todayStr;
 
+              if (isPastMonth) {
+                const hasKept = dayInsts.some(inst => inst.status === 'completed');
+                return (
+                  <div
+                    key={i}
+                    onClick={() => openDayOverlay(dateStr, false)}
+                    style={{
+                      minHeight: '40px', borderRadius: '8px', padding: '4px',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      cursor: 'pointer',
+                      backgroundColor: hasKept ? '#2b2823' : '#f6f1e6',
+                      border: hasKept ? '1px solid transparent' : '1px solid #cdc6b6',
+                    }}
+                  >
+                    <p style={{ fontSize: '11px', margin: 0, color: hasKept ? '#efe9dd' : '#a8a297', fontWeight: hasKept ? 500 : 400 }}>
+                      {day}
+                    </p>
+                  </div>
+                );
+              }
+
+              if (isFutureMonth) {
+                const hasPlanned = dayInsts.length > 0;
+                return (
+                  <div
+                    key={i}
+                    onClick={() => openDayOverlay(dateStr, true)}
+                    style={{
+                      minHeight: '40px', borderRadius: '8px', padding: '4px',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      cursor: 'pointer',
+                      backgroundColor: hasPlanned ? 'rgba(142,163,148,0.15)' : '#f6f1e6',
+                      border: hasPlanned ? '1px solid #8ea394' : '1px solid #cdc6b6',
+                    }}
+                  >
+                    <p style={{ fontSize: '11px', margin: 0, color: hasPlanned ? '#2b2823' : '#a8a297', fontWeight: hasPlanned ? 500 : 400 }}>
+                      {day}
+                    </p>
+                  </div>
+                );
+              }
+
+              // Current month — instance pills + clickable overlay
               return (
-                <div key={i} className={`min-h-[64px] rounded-lg p-1 ${isToday ? 'bg-sage-lt border border-sage' : 'border border-glow-border'}`}>
+                <div
+                  key={i}
+                  onClick={() => openDayOverlay(dateStr, false)}
+                  style={{ cursor: 'pointer' }}
+                  className={`min-h-[64px] rounded-lg p-1 ${isToday ? 'bg-sage-lt border border-sage' : 'border border-glow-border'}`}
+                >
                   <p className={`text-xs text-center mb-0.5 ${isToday ? 'font-bold text-charcoal' : 'text-warm-light'}`}>{day}</p>
                   <div className="space-y-0.5">
                     {dayInsts.slice(0, 3).map(inst => {
@@ -2027,9 +2136,9 @@ export default function DashboardClient({
             style={{ backgroundColor: '#f6f1e6', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '340px', boxShadow: '0 8px 32px rgba(43,40,35,0.14)' }}
             onClick={e => e.stopPropagation()}
           >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-              <p style={{ fontSize: '13px', fontWeight: 500, color: '#2b2823' }}>
-                {format(parseISO(dayOverlay.dateStr), 'EEEE, MMMM d')}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+              <p style={{ fontSize: '10px', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#a8a297', margin: 0 }}>
+                {dayOverlay.isFuture ? 'Rituals planned' : 'Rituals kept'}
               </p>
               <button
                 type="button"
@@ -2039,13 +2148,19 @@ export default function DashboardClient({
                 ×
               </button>
             </div>
+            <p style={{ fontSize: '13px', fontWeight: 500, color: '#2b2823', marginBottom: '16px' }}>
+              {format(parseISO(dayOverlay.dateStr), 'EEEE, MMMM d')}
+            </p>
             {dayOverlay.items.length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {dayOverlay.items.map((item, i) => {
                   const catColor = getCategoryColor(item.categoryName).dot;
                   return (
                     <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <span style={{ color: '#8ea394', fontSize: '14px' }}>✓</span>
+                      {dayOverlay.isFuture
+                        ? <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#8ea394', flexShrink: 0 }} />
+                        : <span style={{ color: '#8ea394', fontSize: '14px' }}>✓</span>
+                      }
                       <div style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: catColor, flexShrink: 0 }} />
                       <span style={{ fontSize: '13px', color: '#2b2823' }}>{item.name}</span>
                     </div>
@@ -2053,7 +2168,9 @@ export default function DashboardClient({
                 })}
               </div>
             ) : (
-              <p style={{ fontSize: '13px', color: '#a8a297', fontStyle: 'italic' }}>Nothing logged for this day.</p>
+              <p style={{ fontSize: '13px', color: '#a8a297', fontStyle: 'italic' }}>
+                {dayOverlay.isFuture ? 'Nothing planned for this day.' : 'Nothing logged for this day.'}
+              </p>
             )}
           </div>
         </div>

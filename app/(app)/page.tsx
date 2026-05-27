@@ -98,10 +98,10 @@ export default async function DashboardPage() {
       .order('created_at', { ascending: false })
       .limit(2),
 
-    // Shelf: products needing attention (depleted, expiring ≤30 days, or remaining tracked)
+    // Shelf: full product data (same columns as shelf page for filter pills + uses display + reorder link)
     supabase
       .from('products')
-      .select('id, name, brand, is_depleted, remaining_amount, container_size, container_unit, expires_at, product_category_id')
+      .select('*')
       .eq('user_id', user.id)
       .order('name')
       .limit(40),

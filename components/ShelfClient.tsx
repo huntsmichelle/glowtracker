@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { restockProduct, usesRemainingFull } from '@/lib/productTracking';
@@ -124,45 +124,54 @@ function AddProductModal({ systemProducts, categories, userId, onClose, onAdded 
   onClose: () => void;
   onAdded: (p: Product) => void;
 }) {
-  const [search, setSearch] = useState('');
-  const [name, setName] = useState('');
-  const [brand, setBrand] = useState('');
-  const [productUrl, setProductUrl] = useState('');
-  const [reorderUrl, setReorderUrl] = useState('');
-  const [categoryId, setCategoryId] = useState('');
   const [topCatId, setTopCatId] = useState('');
+  const [subCatId, setSubCatId] = useState('');
+  const [leafCatId, setLeafCatId] = useState('');
+  const [name, setName] = useState('');
+  const [nameFocused, setNameFocused] = useState(false);
+  const [brand, setBrand] = useState('');
+  const [notes, setNotes] = useState('');
   const [containerSize, setContainerSize] = useState('');
-  const [containerUnit, setContainerUnit] = useState('ml');
+  const [containerUnit, setContainerUnit] = useState('oz');
+  const [amountPerUse, setAmountPerUse] = useState('');
   const [usesPerContainer, setUsesPerContainer] = useState('');
-  const [purchasePrice, setPurchasePrice] = useState('');
+  const [highlightCalc, setHighlightCalc] = useState(false);
+  const [reorderUrl, setReorderUrl] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const topLevelCats = categories.filter(c => !c.parent_id);
+  const topCats = categories.filter(c => !c.parent_id);
   const subCats = topCatId ? categories.filter(c => c.parent_id === topCatId) : [];
+  const leafCats = subCatId ? categories.filter(c => c.parent_id === subCatId) : [];
+  const finalCatId = leafCatId || subCatId || topCatId || null;
 
-  const seedMatches = search.length >= 2
-    ? systemProducts.filter(p => p.name.toLowerCase().includes(search.toLowerCase())).slice(0, 6)
+  // Show name suggestions when category fully resolved and user hasn't typed much
+  const suggestCatId = leafCatId || (leafCats.length === 0 && subCatId) || null;
+  const suggestions = suggestCatId && name.length < 3
+    ? systemProducts.filter(p => p.product_category_id === suggestCatId).slice(0, 5)
     : [];
 
-  function prefillFromSeed(seed: Product) {
-    setName(seed.name);
-    setBrand(seed.brand ?? '');
-    setProductUrl(seed.product_url ?? '');
-    if (seed.product_category_id) {
-      const cat = categories.find(c => c.id === seed.product_category_id);
-      if (cat?.parent_id) {
-        setTopCatId(cat.parent_id);
-        setCategoryId(cat.id);
-      } else if (cat) {
-        setTopCatId(cat.id);
-        setCategoryId('');
-      }
+  function recalc(sizeStr: string, perUseStr: string) {
+    const size = parseFloat(sizeStr);
+    const perUse = parseFloat(perUseStr);
+    if (size > 0 && perUse > 0) {
+      setUsesPerContainer(String(Math.floor(size / perUse)));
+      setHighlightCalc(true);
+      setTimeout(() => setHighlightCalc(false), 1000);
     }
-    if (seed.container_size != null) setContainerSize(String(seed.container_size));
-    if (seed.container_unit) setContainerUnit(seed.container_unit);
-    setSearch('');
+  }
+
+  function prefillFromSuggestion(p: Product) {
+    setName(p.name);
+    setBrand(p.brand ?? '');
+    if (p.container_size != null) setContainerSize(String(p.container_size));
+    if (p.container_unit) setContainerUnit(p.container_unit);
+    const perUse = (p.uses_per_supply_unit && p.container_size && p.uses_per_supply_unit > 0)
+      ? String(p.container_size / p.uses_per_supply_unit)
+      : '';
+    setAmountPerUse(perUse);
+    recalc(p.container_size != null ? String(p.container_size) : '', perUse);
   }
 
   async function handleSave() {
@@ -175,18 +184,20 @@ function AddProductModal({ systemProducts, categories, userId, onClose, onAdded 
     setSaving(true);
     setError(null);
     const supabase = createClient();
-    const finalCatId = categoryId || topCatId || null;
+    const totalSize = containerSize !== '' ? Number(containerSize) : null;
+    const perUse = amountPerUse !== '' ? Number(amountPerUse) : null;
+    const usesPerCont = totalSize && perUse && perUse > 0 ? Math.floor(totalSize / perUse) : null;
     const { data, error: err } = await supabase.from('products').insert({
       user_id: userId,
       name: name.trim(),
       brand: brand.trim() || null,
-      product_url: productUrl.trim() || null,
+      notes: notes.trim() || null,
       reorder_url: trimmedReorder || null,
       product_category_id: finalCatId,
-      container_size: containerSize !== '' ? Number(containerSize) : null,
+      container_size: totalSize,
       container_unit: containerUnit || null,
-      uses_per_supply_unit: usesPerContainer !== '' ? Number(usesPerContainer) : null,
-      remaining_amount: containerSize !== '' ? Number(containerSize) : null,
+      uses_per_supply_unit: usesPerCont,
+      remaining_amount: totalSize,
       is_depleted: false,
       expires_at: expiresAt ? expiresAt + '-01' : null,
     }).select().single();
@@ -195,104 +206,178 @@ function AddProductModal({ systemProducts, categories, userId, onClose, onAdded 
     onClose();
   }
 
+  const inputStyle: React.CSSProperties = { width: '100%', border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 12px', fontSize: '14px', background: '#ede8db', color: '#2b2823' };
+  const labelStyle: React.CSSProperties = { display: 'block', fontSize: '10px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#a8a297', marginBottom: '6px' };
+  const pillBase: React.CSSProperties = { fontSize: '11px', borderRadius: '100px', border: '1px solid', padding: '4px 12px', cursor: 'pointer', background: 'none' };
+
+  function PillRow({ items, selected, onSelect }: { items: ProductCategory[]; selected: string; onSelect: (id: string) => void }) {
+    return (
+      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+        {items.map(c => (
+          <button
+            key={c.id}
+            type="button"
+            onClick={() => onSelect(selected === c.id ? '' : c.id)}
+            style={{
+              ...pillBase,
+              borderColor: selected === c.id ? '#2b2823' : '#cdc6b6',
+              background: selected === c.id ? '#2b2823' : 'transparent',
+              color: selected === c.id ? '#efe9dd' : '#6b665e',
+            }}
+          >
+            {c.name}
+          </button>
+        ))}
+      </div>
+    );
+  }
+
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(43,40,35,0.35)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', overflowY: 'auto' }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ background: '#f6f1e6', borderRadius: '16px', padding: '28px', width: '100%', maxWidth: '480px', boxShadow: '0 8px 32px rgba(43,40,35,0.14)', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+    <div
+      style={{ position: 'fixed', inset: 0, background: 'rgba(43,40,35,0.35)', zIndex: 60, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '24px', overflowY: 'auto' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div style={{ background: '#f6f1e6', borderRadius: '16px', padding: '28px', width: '100%', maxWidth: '480px', boxShadow: '0 8px 32px rgba(43,40,35,0.14)', display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '20px', marginBottom: '40px' }}>
         <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontStyle: 'italic', fontSize: '22px', color: '#2b2823' }}>Add product</p>
 
-        {/* Seed search */}
-        <div style={{ position: 'relative' }}>
-          <label style={{ display: 'block', fontSize: '10px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#a8a297', marginBottom: '6px' }}>Search common products</label>
-          <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="e.g. vitamin C serum…"
-            style={{ width: '100%', border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 12px', fontSize: '14px', background: '#ede8db', color: '#2b2823' }} />
-          {seedMatches.length > 0 && (
-            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#f6f1e6', border: '1px solid #cdc6b6', borderRadius: '8px', zIndex: 10, boxShadow: '0 4px 12px rgba(43,40,35,0.1)', marginTop: '4px' }}>
-              {seedMatches.map(s => (
-                <button key={s.id} type="button" onClick={() => prefillFromSeed(s)}
-                  style={{ width: '100%', textAlign: 'left', padding: '8px 12px', fontSize: '13px', color: '#2b2823', background: 'none', border: 'none', cursor: 'pointer', borderBottom: '1px solid #cdc6b6' }}>
-                  {s.name}{s.brand ? ` · ${s.brand}` : ''}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div style={{ height: '1px', background: '#cdc6b6' }} />
-
-        <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Product name *"
-          style={{ width: '100%', border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 12px', fontSize: '14px', background: '#ede8db', color: '#2b2823' }} />
-        <input type="text" value={brand} onChange={e => setBrand(e.target.value)} placeholder="Brand (optional)"
-          style={{ width: '100%', border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 12px', fontSize: '14px', background: '#ede8db', color: '#2b2823' }} />
-
-        {/* Two-level category picker */}
-        {topLevelCats.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '10px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#a8a297', marginBottom: '6px' }}>Category</label>
-              <select value={topCatId} onChange={e => { setTopCatId(e.target.value); setCategoryId(''); }}
-                style={{ width: '100%', border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 12px', fontSize: '13px', background: '#ede8db', color: '#2b2823' }}>
-                <option value="">Select…</option>
-                {topLevelCats.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </div>
-            {subCats.length > 0 && (
-              <div>
-                <label style={{ display: 'block', fontSize: '10px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#a8a297', marginBottom: '6px' }}>Subcategory</label>
-                <select value={categoryId} onChange={e => setCategoryId(e.target.value)}
-                  style={{ width: '100%', border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 12px', fontSize: '13px', background: '#ede8db', color: '#2b2823' }}>
-                  <option value="">Select…</option>
-                  {subCats.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </div>
-            )}
+        {/* Category pills */}
+        {topCats.length > 0 && (
+          <div>
+            <label style={labelStyle}>Category</label>
+            <PillRow items={topCats} selected={topCatId} onSelect={id => { setTopCatId(id); setSubCatId(''); setLeafCatId(''); }} />
           </div>
         )}
 
-        {/* Container size + unit */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+        {/* Subcategory pills */}
+        {subCats.length > 0 && (
           <div>
-            <label style={{ display: 'block', fontSize: '10px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#a8a297', marginBottom: '6px' }}>Container size</label>
+            <label style={labelStyle}>Subcategory</label>
+            <PillRow items={subCats} selected={subCatId} onSelect={id => { setSubCatId(id); setLeafCatId(''); }} />
+          </div>
+        )}
+
+        {/* Product type pills */}
+        {leafCats.length > 0 && (
+          <div>
+            <label style={labelStyle}>Product type</label>
+            <PillRow items={leafCats} selected={leafCatId} onSelect={id => setLeafCatId(id)} />
+          </div>
+        )}
+
+        {/* Product name + optional suggestions */}
+        <div>
+          <label style={labelStyle}>Product name *</label>
+          <div style={{ position: 'relative' }}>
+            <input
+              type="text"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              onFocus={() => setNameFocused(true)}
+              onBlur={() => setTimeout(() => setNameFocused(false), 200)}
+              placeholder="e.g. Revlon ColorSilk"
+              style={inputStyle}
+            />
+            {nameFocused && suggestions.length > 0 && (
+              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#f6f1e6', border: '1px solid #cdc6b6', borderRadius: '8px', zIndex: 10, boxShadow: '0 4px 12px rgba(43,40,35,0.1)', marginTop: '4px', overflow: 'hidden' }}>
+                {suggestions.map(s => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onMouseDown={() => prefillFromSuggestion(s)}
+                    style={{ width: '100%', textAlign: 'left', padding: '8px 12px', fontSize: '13px', color: '#2b2823', background: 'none', border: 'none', borderBottom: '1px solid #e8e2d5', cursor: 'pointer' }}
+                  >
+                    {s.name}{s.brand ? ` · ${s.brand}` : ''}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Brand */}
+        <div>
+          <label style={labelStyle}>Brand (optional)</label>
+          <input type="text" value={brand} onChange={e => setBrand(e.target.value)} placeholder="e.g. Revlon" style={inputStyle} />
+        </div>
+
+        {/* Total size + Amount per use */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', alignItems: 'end' }}>
+          <div>
+            <label style={labelStyle}>Total size</label>
             <div style={{ display: 'flex', gap: '6px' }}>
-              <input type="number" min={0} value={containerSize} onChange={e => setContainerSize(e.target.value)} placeholder="150"
-                style={{ flex: 1, border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 12px', fontSize: '14px', background: '#ede8db', color: '#2b2823' }} />
-              <select value={containerUnit} onChange={e => setContainerUnit(e.target.value)}
-                style={{ border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px', fontSize: '13px', background: '#ede8db', color: '#2b2823' }}>
-                {['ml', 'fl oz', 'g', 'oz', 'kit', 'strips'].map(u => <option key={u} value={u}>{u}</option>)}
+              <input
+                type="number"
+                min={0}
+                value={containerSize}
+                onChange={e => setContainerSize(e.target.value)}
+                onBlur={() => recalc(containerSize, amountPerUse)}
+                placeholder="e.g. 32"
+                style={{ flex: 1, border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 10px', fontSize: '14px', background: '#ede8db', color: '#2b2823' }}
+              />
+              <select
+                value={containerUnit}
+                onChange={e => setContainerUnit(e.target.value)}
+                style={{ width: '64px', border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 6px', fontSize: '12px', background: '#ede8db', color: '#2b2823' }}
+              >
+                {['oz', 'fl oz', 'ml', 'g'].map(u => <option key={u} value={u}>{u}</option>)}
               </select>
             </div>
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: '10px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#a8a297', marginBottom: '6px' }}>Uses per container</label>
-            <input type="number" min={1} value={usesPerContainer} onChange={e => setUsesPerContainer(e.target.value)} placeholder="e.g. 60"
-              style={{ width: '100%', border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 12px', fontSize: '14px', background: '#ede8db', color: '#2b2823' }} />
+            <label style={labelStyle}>Amount per use</label>
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+              <input
+                type="number"
+                min={0}
+                value={amountPerUse}
+                onChange={e => setAmountPerUse(e.target.value)}
+                onBlur={() => recalc(containerSize, amountPerUse)}
+                placeholder="e.g. 2"
+                style={{ flex: 1, border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 10px', fontSize: '14px', background: '#ede8db', color: '#2b2823' }}
+              />
+              <span style={{ fontSize: '12px', color: '#a8a297', whiteSpace: 'nowrap', minWidth: '48px' }}>{containerUnit} / use</span>
+            </div>
           </div>
         </div>
 
+        {/* Uses per container — read-only calculated */}
+        <p style={{ fontSize: '12px', color: '#a8a297', marginTop: '-8px', borderRadius: '6px', padding: '4px 8px', border: highlightCalc ? '1px solid rgba(142,163,148,0.5)' : '1px solid transparent', background: highlightCalc ? 'rgba(142,163,148,0.08)' : 'transparent', transition: 'border-color 0.3s, background 0.3s', visibility: usesPerContainer ? 'visible' : 'hidden' }}>
+          ≈ {usesPerContainer || '—'} uses per container
+        </p>
+
         {/* Purchase price */}
         <div>
-          <label style={{ display: 'block', fontSize: '10px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#a8a297', marginBottom: '6px' }}>Purchase price</label>
+          <label style={labelStyle}>Purchase price (optional)</label>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid #cdc6b6', borderRadius: '8px', background: '#ede8db', padding: '8px 12px' }}>
             <span style={{ fontSize: '13px', color: '#6b665e', flexShrink: 0 }}>$</span>
-            <input type="number" min={0} step="0.01" value={purchasePrice} onChange={e => setPurchasePrice(e.target.value)} placeholder="0.00"
+            <input type="number" min={0} step="0.01" placeholder="0.00"
               style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: '14px', color: '#2b2823' }} />
           </div>
         </div>
 
-        {/* Expiration */}
-        <div>
-          <label style={{ display: 'block', fontSize: '10px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#a8a297', marginBottom: '6px' }}>Expiration (optional)</label>
-          <input type="month" value={expiresAt} onChange={e => setExpiresAt(e.target.value)}
-            style={{ width: '100%', border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 12px', fontSize: '14px', background: '#ede8db', color: '#2b2823' }} />
-        </div>
-
         {/* Reorder link */}
         <div>
-          <label style={{ display: 'block', fontSize: '10px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#a8a297', marginBottom: '6px' }}>Reorder link (optional)</label>
+          <label style={labelStyle}>Reorder link (optional)</label>
           <input type="url" value={reorderUrl} onChange={e => setReorderUrl(e.target.value)}
-            placeholder="Paste a link to reorder this product"
-            style={{ width: '100%', border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 12px', fontSize: '14px', background: '#ede8db', color: '#2b2823' }} />
+            placeholder="https://…" style={inputStyle} />
+        </div>
+
+        {/* Expiration */}
+        <div>
+          <label style={labelStyle}>Expiration (optional)</label>
+          <input type="month" value={expiresAt} onChange={e => setExpiresAt(e.target.value)} style={inputStyle} />
+        </div>
+
+        {/* Notes */}
+        <div>
+          <label style={labelStyle}>Notes (optional)</label>
+          <textarea
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            rows={2}
+            placeholder="e.g. works best on damp hair"
+            style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.4 }}
+          />
         </div>
 
         {error && <p style={{ fontSize: '12px', color: '#c08a6e' }}>{error}</p>}
@@ -326,11 +411,22 @@ function ProductSlideOver({ product, categories, onClose, onUpdated, onRestock }
   const [productUrl, setProductUrl] = useState(product.product_url ?? '');
   const [reorderUrl, setReorderUrl] = useState(product.reorder_url ?? '');
   const [containerSize, setContainerSize] = useState(product.container_size != null ? String(product.container_size) : '');
-  const [containerUnit, setContainerUnit] = useState(product.container_unit ?? 'ml');
+  const [containerUnit, setContainerUnit] = useState(product.container_unit ?? 'oz');
+  const [amountPerUse, setAmountPerUse] = useState(() => {
+    if (product.container_size && product.uses_per_supply_unit && product.uses_per_supply_unit > 0) {
+      return String(product.container_size / product.uses_per_supply_unit);
+    }
+    return '';
+  });
+  const [usesPerContainerCalc, setUsesPerContainerCalc] = useState(() =>
+    product.uses_per_supply_unit ? String(product.uses_per_supply_unit) : ''
+  );
+  const [highlightCalc, setHighlightCalc] = useState(false);
   const [remaining, setRemaining] = useState(product.remaining_amount != null ? String(product.remaining_amount) : '');
   const [expiresAt, setExpiresAt] = useState(product.expires_at ? product.expires_at.slice(0, 7) : '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [linkedTasks, setLinkedTasks] = useState<{ id: string; name: string; useAmount: number | null }[]>([]);
 
   const topLevelCats = categories.filter(c => !c.parent_id);
   const selectedCatObj = categories.find(c => c.id === product.product_category_id);
@@ -339,8 +435,40 @@ function ProductSlideOver({ product, categories, onClose, onUpdated, onRestock }
   const subCats = topCatId ? categories.filter(c => c.parent_id === topCatId) : [];
 
   const pct = pctRemaining(product);
-  const bColor = pct != null ? barColor(pct) : '#cdc6b6';
   const expiry = expiryStatus(product);
+
+  const defaultPerUse = (product.container_size && product.uses_per_supply_unit && product.uses_per_supply_unit > 0)
+    ? product.container_size / product.uses_per_supply_unit
+    : null;
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase
+      .from('task_products')
+      .select('use_amount_override, task:tasks(id, name)')
+      .eq('product_id', product.id)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .then(({ data }) => {
+        if (data) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          setLinkedTasks((data as any[]).map(tp => ({
+            id: tp.task?.id ?? '',
+            name: tp.task?.name ?? '—',
+            useAmount: tp.use_amount_override,
+          })));
+        }
+      });
+  }, [product.id]);
+
+  function recalc(sizeStr: string, perUseStr: string) {
+    const size = parseFloat(sizeStr);
+    const perUse = parseFloat(perUseStr);
+    if (size > 0 && perUse > 0) {
+      setUsesPerContainerCalc(String(Math.floor(size / perUse)));
+      setHighlightCalc(true);
+      setTimeout(() => setHighlightCalc(false), 1000);
+    }
+  }
 
   async function handleSave() {
     if (!name.trim()) { setError('Name is required.'); return; }
@@ -353,23 +481,34 @@ function ProductSlideOver({ product, categories, onClose, onUpdated, onRestock }
     setError(null);
     const supabase = createClient();
     const finalCatId = categoryId || topCatId || null;
-    const newRemaining = remaining !== '' ? Number(remaining) : null;
+    const totalSizeNum = containerSize !== '' ? Number(containerSize) : null;
+    const perUseNum = amountPerUse !== '' ? Number(amountPerUse) : null;
+    const usesPerCont = totalSizeNum && perUseNum && perUseNum > 0 ? Math.floor(totalSizeNum / perUseNum) : null;
+    // One-time correction: if remaining was never set but total size is known, start full
+    const resolvedRemaining = (remaining === '' && totalSizeNum !== null)
+      ? totalSizeNum
+      : (remaining !== '' ? Number(remaining) : null);
     const { data, error: err } = await supabase.from('products').update({
       name: name.trim(),
       brand: brand.trim() || null,
       product_url: productUrl.trim() || null,
       reorder_url: trimmedReorder || null,
       product_category_id: finalCatId,
-      container_size: containerSize !== '' ? Number(containerSize) : null,
+      container_size: totalSizeNum,
       container_unit: containerUnit || null,
-      remaining_amount: newRemaining,
-      is_depleted: newRemaining !== null && newRemaining <= 0,
+      uses_per_supply_unit: usesPerCont,
+      remaining_amount: resolvedRemaining,
+      is_depleted: resolvedRemaining !== null && resolvedRemaining <= 0,
       expires_at: expiresAt ? expiresAt + '-01' : null,
     }).eq('id', product.id).eq('user_id', product.user_id).select().single();
     if (err || !data) { setError(err?.message ?? 'Could not save.'); setSaving(false); return; }
     onUpdated(data as Product);
     onClose();
   }
+
+  const inputStyle: React.CSSProperties = { width: '100%', border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 12px', fontSize: '14px', background: '#ede8db', color: '#2b2823' };
+  const labelStyle: React.CSSProperties = { display: 'block', fontSize: '10px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#a8a297', marginBottom: '6px' };
+  const subLabelStyle: React.CSSProperties = { fontSize: '10px', color: '#a8a297', marginBottom: '4px' };
 
   return (
     <>
@@ -413,22 +552,23 @@ function ProductSlideOver({ product, categories, onClose, onUpdated, onRestock }
 
         {/* Edit form */}
         <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '14px', flex: 1 }}>
+          {/* Name */}
           <div>
-            <label style={{ display: 'block', fontSize: '10px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#a8a297', marginBottom: '6px' }}>Name</label>
-            <input type="text" value={name} onChange={e => setName(e.target.value)}
-              style={{ width: '100%', border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 12px', fontSize: '14px', background: '#ede8db', color: '#2b2823' }} />
+            <label style={labelStyle}>Name</label>
+            <input type="text" value={name} onChange={e => setName(e.target.value)} style={inputStyle} />
           </div>
+
+          {/* Brand */}
           <div>
-            <label style={{ display: 'block', fontSize: '10px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#a8a297', marginBottom: '6px' }}>Brand</label>
-            <input type="text" value={brand} onChange={e => setBrand(e.target.value)} placeholder="Optional"
-              style={{ width: '100%', border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 12px', fontSize: '14px', background: '#ede8db', color: '#2b2823' }} />
+            <label style={labelStyle}>Brand</label>
+            <input type="text" value={brand} onChange={e => setBrand(e.target.value)} placeholder="Optional" style={inputStyle} />
           </div>
 
           {/* Category picker */}
           {topLevelCats.length > 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '10px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#a8a297', marginBottom: '6px' }}>Category</label>
+                <label style={labelStyle}>Category</label>
                 <select value={topCatId} onChange={e => { setTopCatId(e.target.value); setCategoryId(''); }}
                   style={{ width: '100%', border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px', fontSize: '13px', background: '#ede8db', color: '#2b2823' }}>
                   <option value="">Select…</option>
@@ -437,7 +577,7 @@ function ProductSlideOver({ product, categories, onClose, onUpdated, onRestock }
               </div>
               {subCats.length > 0 && (
                 <div>
-                  <label style={{ display: 'block', fontSize: '10px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#a8a297', marginBottom: '6px' }}>Subcategory</label>
+                  <label style={labelStyle}>Subcategory</label>
                   <select value={categoryId} onChange={e => setCategoryId(e.target.value)}
                     style={{ width: '100%', border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px', fontSize: '13px', background: '#ede8db', color: '#2b2823' }}>
                     <option value="">Select…</option>
@@ -448,49 +588,113 @@ function ProductSlideOver({ product, categories, onClose, onUpdated, onRestock }
             </div>
           )}
 
-          {/* Container */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '10px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#a8a297', marginBottom: '6px' }}>Container size</label>
-              <div style={{ display: 'flex', gap: '4px' }}>
-                <input type="number" min={0} value={containerSize} onChange={e => setContainerSize(e.target.value)} placeholder="e.g. 150"
-                  style={{ flex: 1, border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 10px', fontSize: '14px', background: '#ede8db', color: '#2b2823' }} />
-                <select value={containerUnit} onChange={e => setContainerUnit(e.target.value)}
-                  style={{ border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px', fontSize: '13px', background: '#ede8db', color: '#2b2823' }}>
-                  {['ml', 'fl oz', 'g', 'oz', 'kit', 'strips'].map(u => <option key={u} value={u}>{u}</option>)}
-                </select>
+          {/* Quantity fields */}
+          <div>
+            <label style={labelStyle}>Quantity</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', alignItems: 'end' }}>
+              <div>
+                <p style={subLabelStyle}>Total size</p>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  <input
+                    type="number" min={0}
+                    value={containerSize}
+                    onChange={e => setContainerSize(e.target.value)}
+                    onBlur={() => recalc(containerSize, amountPerUse)}
+                    placeholder="e.g. 32"
+                    style={{ flex: 1, border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 10px', fontSize: '14px', background: '#ede8db', color: '#2b2823' }}
+                  />
+                  <select
+                    value={containerUnit}
+                    onChange={e => setContainerUnit(e.target.value)}
+                    style={{ width: '60px', border: '1px solid #cdc6b6', borderRadius: '8px', padding: '6px', fontSize: '12px', background: '#ede8db', color: '#2b2823' }}
+                  >
+                    {['oz', 'fl oz', 'ml', 'g', 'kit', 'strips'].map(u => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <p style={subLabelStyle}>Amount per use</p>
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                  <input
+                    type="number" min={0}
+                    value={amountPerUse}
+                    onChange={e => setAmountPerUse(e.target.value)}
+                    onBlur={() => recalc(containerSize, amountPerUse)}
+                    placeholder="e.g. 2"
+                    style={{ flex: 1, border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 10px', fontSize: '14px', background: '#ede8db', color: '#2b2823' }}
+                  />
+                  <span style={{ fontSize: '12px', color: '#a8a297', whiteSpace: 'nowrap' }}>{containerUnit} / use</span>
+                </div>
               </div>
             </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '10px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#a8a297', marginBottom: '6px' }}>Remaining</label>
-              <input type="number" min={0} value={remaining} onChange={e => setRemaining(e.target.value)} placeholder="e.g. 75"
-                style={{ width: '100%', border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 12px', fontSize: '14px', background: '#ede8db', color: '#2b2823' }} />
+            {/* Uses per container — read-only */}
+            <p style={{ fontSize: '12px', color: '#a8a297', marginTop: '6px', borderRadius: '6px', padding: '4px 8px', border: highlightCalc ? '1px solid rgba(142,163,148,0.5)' : '1px solid transparent', background: highlightCalc ? 'rgba(142,163,148,0.08)' : 'transparent', transition: 'border-color 0.3s, background 0.3s', visibility: usesPerContainerCalc ? 'visible' : 'hidden' }}>
+              ≈ {usesPerContainerCalc || '—'} uses per container
+            </p>
+            {/* Remaining */}
+            <div style={{ marginTop: '12px' }}>
+              <p style={subLabelStyle}>Remaining (adjust for mid-bottle)</p>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <input
+                  type="number" min={0}
+                  value={remaining}
+                  onChange={e => setRemaining(e.target.value)}
+                  placeholder={containerSize || 'e.g. 16'}
+                  style={{ flex: 1, border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 10px', fontSize: '14px', background: '#ede8db', color: '#2b2823' }}
+                />
+                {containerUnit && <span style={{ fontSize: '12px', color: '#a8a297', whiteSpace: 'nowrap' }}>{containerUnit}</span>}
+              </div>
             </div>
           </div>
 
           {/* Expiration */}
           <div>
-            <label style={{ display: 'block', fontSize: '10px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#a8a297', marginBottom: '6px' }}>Expiration (optional)</label>
-            <input type="month" value={expiresAt} onChange={e => setExpiresAt(e.target.value)}
-              style={{ width: '100%', border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 12px', fontSize: '14px', background: '#ede8db', color: '#2b2823' }} />
+            <label style={labelStyle}>Expiration (optional)</label>
+            <input type="month" value={expiresAt} onChange={e => setExpiresAt(e.target.value)} style={inputStyle} />
           </div>
 
           {/* Product URL */}
           <div>
-            <label style={{ display: 'block', fontSize: '10px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#a8a297', marginBottom: '6px' }}>Product URL</label>
-            <input type="text" value={productUrl} onChange={e => setProductUrl(e.target.value)} placeholder="https://…"
-              style={{ width: '100%', border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 12px', fontSize: '14px', background: '#ede8db', color: '#2b2823' }} />
+            <label style={labelStyle}>Product URL</label>
+            <input type="text" value={productUrl} onChange={e => setProductUrl(e.target.value)} placeholder="https://…" style={inputStyle} />
           </div>
 
           {/* Reorder link */}
           <div>
-            <label style={{ display: 'block', fontSize: '10px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#a8a297', marginBottom: '6px' }}>Reorder link (optional)</label>
+            <label style={labelStyle}>Reorder link (optional)</label>
             <input type="url" value={reorderUrl} onChange={e => setReorderUrl(e.target.value)}
-              placeholder="Paste a link to reorder this product"
-              style={{ width: '100%', border: '1px solid #cdc6b6', borderRadius: '8px', padding: '8px 12px', fontSize: '14px', background: '#ede8db', color: '#2b2823' }} />
+              placeholder="Paste a link to reorder this product" style={inputStyle} />
           </div>
 
           {error && <p style={{ fontSize: '12px', color: '#c08a6e' }}>{error}</p>}
+
+          {/* Used in rituals */}
+          <div style={{ borderTop: '1px solid #e8e2d5', paddingTop: '16px', marginTop: '4px' }}>
+            <p style={{ fontSize: '10px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#a8a297', marginBottom: '10px' }}>Used in rituals</p>
+            {linkedTasks.filter(t => t.id).length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {linkedTasks.filter(t => t.id).map(t => {
+                  const effectiveAmount = t.useAmount ?? defaultPerUse;
+                  return (
+                    <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '13px', color: '#2b2823', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
+                      <span style={{ fontSize: '12px', color: '#a8a297', flexShrink: 0 }}>
+                        {effectiveAmount != null ? `${effectiveAmount} ${containerUnit} / ritual` : '—'}
+                      </span>
+                      <a
+                        href={`/tasks/${t.id}/edit`}
+                        style={{ fontSize: '12px', color: '#6b665e', flexShrink: 0, textDecoration: 'none', whiteSpace: 'nowrap' }}
+                      >
+                        Edit ›
+                      </a>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p style={{ fontSize: '13px', color: '#a8a297', fontStyle: 'italic' }}>Not linked to any rituals yet.</p>
+            )}
+          </div>
         </div>
 
         {/* Footer */}
