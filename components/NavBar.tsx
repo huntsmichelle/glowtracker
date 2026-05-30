@@ -86,8 +86,8 @@ export default function NavBar() {
         <div className="flex-1 px-5 pt-7 pb-4 space-y-8">
           {/* Logo */}
           <Link href="/" className="block">
-            <h1 style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '22px', color: '#2b2823', fontWeight: 400 }}>GlowLoop</h1>
-            <p style={{ fontSize: '11px', color: '#a8a297', letterSpacing: '0.01em', marginTop: '2px', marginBottom: 0 }}>Your routine, on your schedule.</p>
+            <h1 style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '22px', color: '#2b2823', fontWeight: 400 }}>tend, too</h1>
+            <p style={{ fontSize: '11px', color: '#a8a297', letterSpacing: '0.01em', marginTop: '2px', marginBottom: 0 }}>Because you're also on the list.</p>
           </Link>
 
           {/* Nav links */}

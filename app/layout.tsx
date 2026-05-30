@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'GlowLoop',
-  description: 'Your personal ritual tracker',
+  title: 'tend, too',
+  description: 'Because you\'re also on the list.',
 };
 
 export default function RootLayout({

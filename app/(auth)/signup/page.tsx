@@ -35,8 +35,8 @@ export default function SignupPage() {
       <div className="w-full max-w-sm">
         {/* Brand */}
         <div className="text-center mb-10">
-          <h1 className="font-display text-4xl text-charcoal">GlowLoop</h1>
-          <p className="text-warm-mid text-sm mt-1">Your personal ritual tracker</p>
+          <h1 className="font-display text-4xl text-charcoal">tend, too</h1>
+          <p className="text-warm-mid text-sm mt-1">Because you're also on the list.</p>
         </div>
 
         <form
