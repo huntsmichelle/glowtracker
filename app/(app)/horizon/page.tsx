@@ -26,7 +26,8 @@ export default async function HorizonPage() {
       )
     `)
     .eq('user_id', user.id)
-    .in('status', ['upcoming', 'due', 'snoozed'])
+    .eq('status', 'upcoming')
+    .eq('is_projected', false)
     .eq('archived', false)
     .order('due_date_start', { ascending: true });
 

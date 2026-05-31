@@ -562,6 +562,7 @@ export default function TaskForm({
           : 0) // 'minutes' — below 1-day granularity, store as 0
         : 0,
       user_id:               userId,
+      is_active:             true,
       mode,
       frequency_type:        mode === 'standard' ? frequencyType : 'interval',
       slot_a_label:          isTwiceD ? (slotALabel.trim() || 'Morning') : null,
@@ -593,7 +594,7 @@ export default function TaskForm({
         .insert(taskPayload)
         .select()
         .single();
-      if (insertErr) { setError(insertErr.message); setLoading(false); return; }
+      if (insertErr) { console.error('Task creation error:', insertErr); setError(insertErr.message); setLoading(false); return; }
 
       const newTask = data as Task;
       resolvedTaskId = newTask.id;

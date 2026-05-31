@@ -53,16 +53,6 @@ const navLinks = [
       </svg>
     ),
   },
-  {
-    href: '/routines',
-    label: 'Routines',
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
-        <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
-      </svg>
-    ),
-  },
 ];
 
 export default function NavBar() {
@@ -88,8 +78,8 @@ export default function NavBar() {
         <div className="flex-1 px-5 pt-7 pb-4 space-y-8">
           {/* Logo */}
           <Link href="/" className="block">
-            <h1 style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '22px', color: '#2b2823', fontWeight: 400 }}>tend, too</h1>
-            <p style={{ fontSize: '11px', color: '#a8a297', letterSpacing: '0.01em', marginTop: '2px', marginBottom: 0 }}>Because you're also on the list.</p>
+            <h1 style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '22px', color: '#352720', fontWeight: 400 }}>tend, too</h1>
+            <p style={{ fontSize: '11px', color: '#a8998e', letterSpacing: '0.01em', marginTop: '2px', marginBottom: 0 }}>Because you're also on the list.</p>
           </Link>
 
           {/* Nav links */}
