@@ -21,18 +21,32 @@ export default async function HorizonPage() {
       task:tasks (
         *,
         category:categories (*),
-        routine:routines (id, name, color)
+        routine:routines (id, name, color),
+        service_provider:service_providers (name)
       )
     `)
     .eq('user_id', user.id)
     .in('status', ['upcoming', 'due', 'snoozed'])
+    .eq('archived', false)
     .order('due_date_start', { ascending: true });
+
+  const allInstances = (instances as InstanceWithTask[]) ?? [];
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  // Summary bar counts
+  const ahead30 = new Date();
+  ahead30.setDate(ahead30.getDate() + 30);
+  const ahead30Str = ahead30.toISOString().split('T')[0];
+  const instancesIn30 = allInstances.filter(i => i.due_date_start >= todayStr && i.due_date_start <= ahead30Str);
+  const catSet = new Set(instancesIn30.map(i => i.task?.category?.id).filter(Boolean));
 
   return (
     <div className="max-w-2xl mx-auto px-5 py-8">
       <HorizonClient
-        instances={(instances as InstanceWithTask[]) ?? []}
+        instances={allInstances}
         userId={user.id}
+        summaryCount={instancesIn30.length}
+        summaryCategoryCount={catSet.size}
       />
     </div>
   );

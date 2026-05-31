@@ -42,6 +42,15 @@ interface Props {
   productAlerts?: ProductAlert[];
   shelfProducts?: Product[];
   shelfProductCategories?: ProductCategory[];
+  weekCompleted?: number;
+  readyCount?: number;
+  pastWindowCount?: number;
+  horizonWeekCount?: number;
+  horizonMonthCount?: number;
+  nextRitual?: { due_date_start: string; task?: { name?: string; category?: { name?: string } | null } | null } | null;
+  monthCompletedCount?: number;
+  mostTendedCategory?: string | null;
+  longestMaintained?: string | null;
 }
 
 type ViewMode = 'list' | 'calendar';
@@ -64,24 +73,21 @@ function spellOut(n: number): string {
   return n >= 0 && n <= 9 ? ONES[n] : String(n);
 }
 
-function getEditorialGreeting(ritualCount: number): string {
+function getGreeting(dueCount: number, pastWindowCount: number): string {
   const hour = new Date().getHours();
-  const words = ['zero','one','two','three','four','five','six','seven','eight','nine'];
-  const countWord = ritualCount <= 9 ? words[ritualCount] : String(ritualCount);
-  const ritualWord = ritualCount === 1 ? 'act' : 'acts';
-  if (hour < 12) {
-    return ritualCount === 0
-      ? 'A quiet morning ahead.'
-      : `A quiet morning, ${countWord} small ${ritualWord}.`;
+  const total = dueCount + pastWindowCount;
+
+  if (total === 0) {
+    if (hour < 12) return 'A quiet morning ahead.';
+    if (hour < 17) return 'In rhythm this afternoon.';
+    return 'All tended to.';
   }
-  if (hour < 17) {
-    return ritualCount === 0
-      ? 'In rhythm this afternoon.'
-      : `Good afternoon, ${countWord} ${ritualCount === 1 ? 'ritual' : 'rituals'} today.`;
-  }
-  return ritualCount === 0
-    ? 'Winding down — all tended to.'
-    : `An evening to tend to things, ${countWord} ${ritualCount === 1 ? 'ritual' : 'rituals'} left.`;
+  if (dueCount === 0 && pastWindowCount === 1) return 'One ritual has drifted past its window.';
+  if (dueCount === 0 && pastWindowCount > 1) return 'A few rituals have drifted past their window.';
+  if (dueCount === 1 && pastWindowCount === 0) return 'One ritual is ready for you.';
+  if (dueCount === 2 && pastWindowCount === 0) return 'Two things to tend to.';
+  if (dueCount > 2 && pastWindowCount === 0) return `${dueCount} rituals are ready for you.`;
+  return 'A few rituals need your attention.';
 }
 
 function getDateOverline(): string {
@@ -134,6 +140,15 @@ export default function DashboardClient({
   productAlerts = [],
   shelfProducts = [],
   shelfProductCategories = [],
+  weekCompleted = 0,
+  readyCount = 0,
+  pastWindowCount = 0,
+  horizonWeekCount = 0,
+  horizonMonthCount = 0,
+  nextRitual = null,
+  monthCompletedCount = 0,
+  mostTendedCategory = null,
+  longestMaintained = null,
 }: Props) {
   const [instances, setInstances] = useState(initial);
 
@@ -1012,82 +1027,6 @@ export default function DashboardClient({
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // RIGHT PANEL — Rhythm + Shelf Restock
-  // ─────────────────────────────────────────────────────────────────────────
-
-  function RhythmCard() {
-    const total  = completedCount + skippedCount;
-    const keptPct = total > 0 ? Math.round((completedCount / total) * 100) : null;
-    const streak  = computeStreak(heatmapDates);
-
-    // 12-week heatmap: 84 cells, oldest at top-left
-    const todayStr = format(today(), 'yyyy-MM-dd');
-    const completedSet = new Set(heatmapDates);
-    const cells: { date: string; has: boolean; isToday: boolean }[] = [];
-    for (let i = 83; i >= 0; i--) {
-      const d = format(new Date(Date.now() - i * 86400000), 'yyyy-MM-dd');
-      cells.push({ date: d, has: completedSet.has(d), isToday: d === todayStr });
-    }
-
-    return (
-      <div className="space-y-5">
-        <p className="label-overline">Rhythm</p>
-
-        {/* Heatmap: 12 weeks × 7 days */}
-        <div>
-          <div className="grid gap-[3px]" style={{ gridTemplateColumns: 'repeat(12, 1fr)' }}>
-            {Array.from({ length: 12 }, (_, week) => (
-              <div key={week} className="flex flex-col gap-[3px]">
-                {cells.slice(week * 7, week * 7 + 7).map((cell, d) => (
-                  <div
-                    key={d}
-                    title={cell.date}
-                    className="rounded-sm"
-                    style={{
-                      width: '100%',
-                      aspectRatio: '1',
-                      backgroundColor: cell.has
-                        ? '#8ea394'
-                        : cell.isToday
-                          ? '#ede8db'
-                          : '#cdc6b6',
-                      opacity: cell.has ? 1 : 0.5,
-                    }}
-                  />
-                ))}
-              </div>
-            ))}
-          </div>
-          <p className="text-[10px] text-warm-light mt-1.5">12 weeks · today →</p>
-        </div>
-
-        {/* Coming Up + Stats combined card */}
-        <div style={{ background: '#f6f1e6', border: '1px solid #cdc6b6', borderRadius: '10px', padding: '16px' }}>
-          <p className="label-overline mb-3">Coming up this week</p>
-          {approaching.length === 0 ? (
-            <p style={{ fontSize: '13px', color: '#a8a297', fontStyle: 'italic' }}>Nothing coming up this week.</p>
-          ) : (
-            <div>
-              {approaching.slice(0, 5).map((a, i) => {
-                const catName = a.task?.category?.name ?? '';
-                const catColor = getCategoryColor(catName).dot;
-                return (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: i < Math.min(approaching.length, 5) - 1 ? '1px solid #cdc6b6' : 'none' }}>
-                    <span style={{ fontSize: '12px', color: '#6b665e', flexShrink: 0, minWidth: '38px' }}>{format(parseISO(a.due_date_start), 'MMM d')}</span>
-                    <span style={{ flex: 1, fontSize: '13px', color: '#2b2823', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.task?.name ?? '—'}</span>
-                    <span style={{ fontSize: '11px', color: catColor, flexShrink: 0 }}>{catName || 'Other'}</span>
-                    <span style={{ fontSize: '14px', color: '#cdc6b6', flexShrink: 0 }}>›</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
   // MOBILE ATRIUM
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -1383,20 +1322,23 @@ export default function DashboardClient({
 
   function InSequenceList() {
     if (instances.length === 0) {
-      const nextApproaching = approaching[0] ?? null;
+      const nextName = nextRitual?.task?.name ?? null;
+      const nextDate = nextRitual?.due_date_start ?? null;
       return (
         <div className="flex flex-col items-center justify-center h-full py-12 px-5 gap-3 text-center">
-          <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontStyle: 'italic', fontSize: '22px', color: '#2b2823' }}>
+          <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontStyle: 'italic', fontSize: '22px', color: '#352720' }}>
             All tended to.
           </p>
-          <div style={{ width: '40px', height: '1px', backgroundColor: '#cdc6b6' }} />
-          {nextApproaching ? (
-            <p style={{ fontSize: '10px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#a8a297' }}>
-              Next: {nextApproaching.task?.name ?? '—'} · {format(parseISO(nextApproaching.due_date_start), 'MMM d')}
-            </p>
+          <div style={{ width: '40px', height: '1px', backgroundColor: '#ddd4c4' }} />
+          {nextName && nextDate ? (
+            <div>
+              <p style={{ fontSize: '9px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#a8998e', marginBottom: '2px' }}>NEXT</p>
+              <p style={{ fontSize: '13px', color: '#352720', fontWeight: 500 }}>{nextName}</p>
+              <p style={{ fontSize: '12px', color: '#6b5c52' }}>{format(parseISO(nextDate), 'MMMM d')}</p>
+            </div>
           ) : (
-            <p style={{ fontSize: '10px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#a8a297' }}>
-              Nothing due today.
+            <p style={{ fontSize: '10px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#a8998e' }}>
+              Nothing upcoming.
             </p>
           )}
         </div>
@@ -1515,158 +1457,67 @@ export default function DashboardClient({
     );
   }
 
-  function RhythmCalendarCard() {
+  function RhythmCard() {
     const now = today();
     const year = now.getFullYear();
     const month = now.getMonth();
     const monthLabel = now.toLocaleString('en-US', { month: 'long', year: 'numeric' });
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const rawFirstDay = new Date(year, month, 1).getDay();
-    const firstMondayOffset = (rawFirstDay + 6) % 7;
-
-    const completedSet = new Set(heatmapDates);
     const todayStr = format(now, 'yyyy-MM-dd');
 
-    const cells: (number | null)[] = [
-      ...Array(firstMondayOffset).fill(null),
-      ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
-    ];
-
-    const total = completedCount + skippedCount;
-    const keptPct = total > 0 ? Math.round((completedCount / total) * 100) : null;
-    const streak = computeStreak(heatmapDates);
+    // Count completions per day this month
+    const dayCounts: Record<string, number> = {};
+    for (const d of heatmapDates) {
+      if (d.startsWith(`${year}-${String(month + 1).padStart(2, '0')}`)) {
+        dayCounts[d] = (dayCounts[d] ?? 0) + 1;
+      }
+    }
 
     return (
       <div className="space-y-4">
-        {/* Full month calendar */}
+        {/* Monthly count */}
+        <p style={{ fontSize: '13px', color: '#6b5c52' }}>
+          <span style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '20px', color: '#352720' }}>{monthCompletedCount}</span>
+          {' '}ritual{monthCompletedCount !== 1 ? 's' : ''} kept in {now.toLocaleString('en-US', { month: 'long' })}
+        </p>
+
+        {/* Heat strip */}
         <div>
-          <p style={{ fontSize: '12px', color: '#6b665e', marginBottom: '12px' }}>{monthLabel}</p>
-          {/* Day-of-week headers */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', marginBottom: '4px' }}>
-            {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, idx) => (
-              <div key={idx} style={{ textAlign: 'center', fontSize: '10px', color: '#a8a297', paddingBottom: '2px' }}>{d}</div>
-            ))}
-          </div>
-          {/* Calendar grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
-            {cells.map((day, idx) => {
-              if (!day) return <div key={idx} style={{ aspectRatio: '1' }} />;
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
+            {Array.from({ length: daysInMonth }, (_, i) => {
+              const day = i + 1;
               const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-              const isCompleted = completedSet.has(dateStr);
+              const count = dayCounts[dateStr] ?? 0;
               const isToday = dateStr === todayStr;
               const isFuture = dateStr > todayStr;
 
-              let bg = '#e8e2d5';
-              let color = '#6b665e';
-              let fontWeight: number | string = 400;
-
-              if (isCompleted) { bg = '#2b2823'; color = '#f6f1e6'; }
-              else if (isToday) { bg = '#8ea394'; color = '#f6f1e6'; fontWeight = 500; }
-              else if (isFuture) { bg = '#ede8df'; color = '#a8a297'; }
+              let bg = '#ddd4c4';
+              if (!isFuture) {
+                if (count >= 4) bg = '#6e8c82';
+                else if (count >= 2) bg = 'color-mix(in oklab, #6e8c82 70%, #faf4e6)';
+                else if (count === 1) bg = 'color-mix(in oklab, #6e8c82 40%, #faf4e6)';
+              }
 
               return (
                 <div
-                  key={idx}
-                  title={dateStr}
-                  onClick={!isFuture ? () => openDayOverlay(dateStr, isFuture) : undefined}
+                  key={day}
+                  title={`${dateStr}: ${count} kept`}
                   style={{
-                    aspectRatio: '1',
-                    borderRadius: '6px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
+                    width: '10px',
+                    height: '10px',
+                    borderRadius: '2px',
                     backgroundColor: bg,
-                    cursor: !isFuture ? 'pointer' : 'default',
+                    opacity: isFuture ? 0.5 : 1,
+                    border: isToday ? '1px solid #6e8c82' : 'none',
+                    flexShrink: 0,
                   }}
-                >
-                  <span style={{ fontSize: '13px', color, fontWeight, lineHeight: 1 }}>{day}</span>
-                </div>
+                />
               );
             })}
           </div>
-        </div>
-
-        {/* Spend section — inline, no card wrapper */}
-        {(() => {
-          const thisMonthStr = format(today(), 'yyyy-MM');
-          const entries = spendingData ?? [];
-          const planned = plannedData ?? [];
-          const actual = entries
-            .filter(e => e.actual_completion_date.startsWith(thisMonthStr))
-            .reduce((s, e) => s + e.cost, 0);
-          const projected = planned
-            .filter(p => p.due_date_start.startsWith(thisMonthStr) && p.task?.default_cost != null)
-            .reduce((s, p) => s + (p.task!.default_cost as number), 0);
-          const total = actual + projected;
-          return (
-            <div style={{ paddingTop: '12px', borderTop: '1px solid #cdc6b6' }}>
-              <p className="label-overline mb-3">This month · spend</p>
-              {spendingLoading ? (
-                <p style={{ fontSize: '12px', color: '#a8a297' }}>Loading…</p>
-              ) : total === 0 ? (
-                <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontStyle: 'italic', fontSize: '14px', color: '#a8a297', textAlign: 'center', padding: '8px 0' }}>
-                  No spend logged this month.
-                </p>
-              ) : (
-                <>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '12px' }}>
-                    <div>
-                      <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '24px', color: '#2b2823', fontWeight: 400, lineHeight: 1 }}>${actual.toFixed(0)}</p>
-                      <p style={{ fontSize: '9px', color: '#a8a297', marginTop: '4px', letterSpacing: '0.12em', textTransform: 'uppercase' }}>actual</p>
-                    </div>
-                    <div>
-                      <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '24px', color: '#2b2823', fontWeight: 400, lineHeight: 1 }}>${projected.toFixed(0)}</p>
-                      <p style={{ fontSize: '9px', color: '#a8a297', marginTop: '4px', letterSpacing: '0.12em', textTransform: 'uppercase' }}>projected</p>
-                    </div>
-                    <div>
-                      <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '24px', color: '#2b2823', fontWeight: 400, lineHeight: 1 }}>${total.toFixed(0)}</p>
-                      <p style={{ fontSize: '9px', color: '#a8a297', marginTop: '4px', letterSpacing: '0.12em', textTransform: 'uppercase' }}>total</p>
-                    </div>
-                  </div>
-                  {/* SpendBar with custom legend */}
-                  <div>
-                    <div style={{ height: '8px', borderRadius: '4px', backgroundColor: '#cdc6b6', overflow: 'hidden', display: 'flex' }}>
-                      <div style={{ width: `${(actual / total) * 100}%`, height: '100%', backgroundColor: '#2b2823', transition: 'width 0.3s ease' }} />
-                      <div style={{ width: `${(projected / total) * 100}%`, height: '100%', backgroundColor: '#a8a297', transition: 'width 0.3s ease' }} />
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '5px' }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', color: '#a8a297' }}>
-                        <span style={{ width: '8px', height: '8px', borderRadius: '2px', backgroundColor: '#2b2823', display: 'inline-block' }} />
-                        Spent
-                      </span>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', color: '#a8a297' }}>
-                        Projected
-                        <span style={{ width: '8px', height: '8px', borderRadius: '2px', backgroundColor: '#a8a297', display: 'inline-block' }} />
-                      </span>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          );
-        })()}
-
-        {/* Coming Up this week */}
-        <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #cdc6b6' }}>
-          <p className="label-overline mb-3">Coming up this week</p>
-          {approaching.length === 0 ? (
-            <p style={{ fontSize: '13px', color: '#a8a297', fontStyle: 'italic' }}>Nothing coming up this week.</p>
-          ) : (
-            <div>
-              {approaching.slice(0, 5).map((a, i) => {
-                const catName = a.task?.category?.name ?? '';
-                const catColor = getCategoryColor(catName).dot;
-                return (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 0', borderBottom: i < Math.min(approaching.length, 5) - 1 ? '1px solid #e8e2d5' : 'none' }}>
-                    <span style={{ fontSize: '12px', color: '#6b665e', flexShrink: 0, minWidth: '40px' }}>{format(parseISO(a.due_date_start), 'MMM d')}</span>
-                    <span style={{ flex: 1, fontSize: '13px', color: '#2b2823', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.task?.name ?? '—'}</span>
-                    <span style={{ fontSize: '11px', color: catColor, flexShrink: 0 }}>{catName || 'Other'}</span>
-                    <span style={{ fontSize: '14px', color: '#cdc6b6', flexShrink: 0 }}>›</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          <Link href="/calendar" style={{ fontSize: '11px', color: '#a8998e', marginTop: '8px', display: 'inline-block' }}>
+            View full calendar →
+          </Link>
         </div>
       </div>
     );
@@ -1762,7 +1613,7 @@ export default function DashboardClient({
   // ROOT RENDER
   // ─────────────────────────────────────────────────────────────────────────
 
-  const greeting = getEditorialGreeting(instances.length);
+  const greeting = getGreeting(readyCount, pastWindowCount);
   const dateOverline = getDateOverline();
   const totalConflicts = Object.values(conflictCounts).reduce((s, n) => s + n, 0);
 
@@ -1812,116 +1663,132 @@ export default function DashboardClient({
         <div className="flex-1 min-h-0 flex gap-5 px-8 py-6">
 
           {/* Card: In sequence */}
-          {(() => {
-            const seqTotal = completedCount + skippedCount;
-            const seqKeptPct = seqTotal > 0 ? Math.round((completedCount / seqTotal) * 100) : null;
-            const seqStreak = computeStreak(heatmapDates);
-            return (
-              <div
-                className="flex-1 min-w-0 flex flex-col bg-stone border border-glow-border rounded-2xl overflow-hidden"
-                style={{ boxShadow: '0 1px 3px rgba(43,40,35,0.06)' }}
-              >
-                {/* Card header */}
-                <div className="flex-shrink-0 px-5 pt-5 pb-3 border-b border-glow-border flex items-center justify-between">
-                  <p className="label-overline">In sequence</p>
-                  {instances.length > 0 && (
-                    <p style={{ fontSize: '9px', color: '#a8a297', letterSpacing: '0.14em', textTransform: 'uppercase' }}>
-                      {instances.length} ritual{instances.length !== 1 ? 's' : ''}
-                    </p>
-                  )}
-                </div>
-
-                {/* Stat boxes */}
-                <div className="flex-shrink-0 px-5 py-3" style={{ borderBottom: '1px solid #cdc6b6' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-                    <div style={{ textAlign: 'center' }}>
-                      <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '22px', color: '#2b2823', fontWeight: 400, lineHeight: 1 }}>
-                        {seqKeptPct != null ? `${seqKeptPct}%` : '—'}
-                      </p>
-                      <p style={{ fontSize: '9px', color: '#a8a297', marginTop: '4px', letterSpacing: '0.12em', textTransform: 'uppercase' }}>kept</p>
-                    </div>
-                    <div style={{ textAlign: 'center' }}>
-                      <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '22px', color: '#2b2823', fontWeight: 400, lineHeight: 1 }}>
-                        {seqStreak}
-                      </p>
-                      <p style={{ fontSize: '9px', color: '#a8a297', marginTop: '4px', letterSpacing: '0.12em', textTransform: 'uppercase' }}>streak</p>
-                    </div>
-                    <div style={{ textAlign: 'center' }}>
-                      <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '22px', color: '#c08a6e', fontWeight: 400, lineHeight: 1 }}>
-                        {due.length}
-                      </p>
-                      <p style={{ fontSize: '9px', color: '#a8a297', marginTop: '4px', letterSpacing: '0.12em', textTransform: 'uppercase' }}>due</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Ritual list */}
-                <div className="flex-1 overflow-y-auto">
-                  {InSequenceList()}
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* Card: Rhythm */}
           <div
             className="flex-1 min-w-0 flex flex-col bg-stone border border-glow-border rounded-2xl overflow-hidden"
-            style={{ boxShadow: '0 1px 3px rgba(43,40,35,0.06)' }}
+            style={{ boxShadow: '0 1px 3px rgba(53,39,32,0.06)' }}
           >
-            <div className="flex-shrink-0 px-5 pt-5 pb-3 border-b border-glow-border">
-              <p className="label-overline">Rhythm</p>
+            {/* Card header */}
+            <div className="flex-shrink-0 px-5 pt-5 pb-3 border-b border-glow-border flex items-center justify-between">
+              <p className="label-overline">In sequence</p>
+              {instances.length > 0 && (
+                <p style={{ fontSize: '9px', color: '#a8998e', letterSpacing: '0.14em', textTransform: 'uppercase' }}>
+                  {instances.length} ritual{instances.length !== 1 ? 's' : ''}
+                </p>
+              )}
             </div>
-            <div className="flex-1 overflow-y-auto px-5 py-4">
-              {RhythmCalendarCard()}
+
+            {/* Rolling 7-day stat boxes */}
+            <div className="flex-shrink-0 px-5 py-3" style={{ borderBottom: '1px solid #ddd4c4' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                <div style={{ textAlign: 'center' }}>
+                  <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '22px', color: '#352720', fontWeight: 400, lineHeight: 1 }}>
+                    {weekCompleted}
+                  </p>
+                  <p style={{ fontSize: '9px', color: '#a8998e', marginTop: '4px', letterSpacing: '0.12em', textTransform: 'uppercase' }}>completed</p>
+                  <p style={{ fontSize: '9px', color: '#a8998e', marginTop: '1px' }}>this week</p>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '22px', color: '#6e8c82', fontWeight: 400, lineHeight: 1 }}>
+                    {readyCount}
+                  </p>
+                  <p style={{ fontSize: '9px', color: '#a8998e', marginTop: '4px', letterSpacing: '0.12em', textTransform: 'uppercase' }}>ready</p>
+                  <p style={{ fontSize: '9px', color: '#a8998e', marginTop: '1px' }}>this week</p>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '22px', fontWeight: 400, lineHeight: 1, color: pastWindowCount > 0 ? '#c08a6e' : '#a8998e' }}>
+                    {pastWindowCount}
+                  </p>
+                  <p style={{ fontSize: '9px', color: '#a8998e', marginTop: '4px', letterSpacing: '0.12em', textTransform: 'uppercase' }}>past window</p>
+                  <p style={{ fontSize: '9px', color: '#a8998e', marginTop: '1px' }}>this week</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Ritual list */}
+            <div className="flex-1 overflow-y-auto">
+              {InSequenceList()}
             </div>
           </div>
 
-          {/* Card: Shelf */}
+          {/* Card: Rhythm column (Horizon summary + Rhythm) */}
+          <div className="flex-1 min-w-0 flex flex-col gap-4">
+
+            {/* Looking Ahead card */}
+            <Link
+              href="/horizon"
+              className="block bg-stone border border-glow-border rounded-2xl px-5 py-4 card-lift"
+              style={{ boxShadow: '0 1px 3px rgba(53,39,32,0.06)', textDecoration: 'none', flexShrink: 0 }}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <p className="label-overline">Looking ahead</p>
+                <span style={{ fontSize: '13px', color: '#a8998e' }}>›</span>
+              </div>
+              <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '12px', color: '#6b5c52', marginBottom: '10px' }}>
+                Next 30 days
+              </p>
+              <div className="space-y-1">
+                <div className="flex items-baseline gap-2">
+                  <span style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '22px', color: '#352720', lineHeight: 1 }}>{horizonWeekCount}</span>
+                  <span style={{ fontSize: '12px', color: '#6b5c52' }}>rituals due this week</span>
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '22px', color: '#352720', lineHeight: 1 }}>{horizonMonthCount}</span>
+                  <span style={{ fontSize: '12px', color: '#6b5c52' }}>rituals due this month</span>
+                </div>
+              </div>
+            </Link>
+
+            {/* Rhythm card */}
+            <div
+              className="flex-1 min-w-0 flex flex-col bg-stone border border-glow-border rounded-2xl overflow-hidden"
+              style={{ boxShadow: '0 1px 3px rgba(53,39,32,0.06)' }}
+            >
+              <div className="flex-shrink-0 px-5 pt-5 pb-3 border-b border-glow-border">
+                <p className="label-overline">Rhythm</p>
+              </div>
+              <div className="flex-1 overflow-y-auto px-5 py-4">
+                {RhythmCard()}
+              </div>
+
+              {/* Insights footer */}
+              {monthCompletedCount > 0 && (
+                <div style={{ borderTop: '1px solid #ddd4c4', padding: '12px 20px' }}>
+                  <p className="label-overline mb-2">This month</p>
+                  <div style={{ fontSize: '12px', color: '#6b5c52', lineHeight: 1.7 }}>
+                    <p>{monthCompletedCount} ritual{monthCompletedCount !== 1 ? 's' : ''} completed</p>
+                    {mostTendedCategory && <p>Most tended: {mostTendedCategory}</p>}
+                    {longestMaintained && <p>Longest maintained: {longestMaintained}</p>}
+                  </div>
+                  <Link href="/calendar" style={{ fontSize: '11px', color: '#a8998e', marginTop: '8px', display: 'inline-block' }}>
+                    View this month →
+                  </Link>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Card: Shelf (conditional — only shows when products need attention) */}
           {(() => {
             const todayDateStr = format(today(), 'yyyy-MM-dd');
             const ahead30Str = format(new Date(Date.now() + 30 * 86400000), 'yyyy-MM-dd');
 
-            // Derive top-level category pills from all shelf products
-            const topCats: { id: string; name: string }[] = [];
-            if (shelfProductCategories.length > 0) {
-              const seen = new Set<string>();
-              for (const p of shelfProducts) {
-                if (!p.product_category_id) continue;
-                const cat = shelfProductCategories.find(c => c.id === p.product_category_id);
-                const topCat = cat?.parent_id
-                  ? shelfProductCategories.find(c => c.id === cat.parent_id)
-                  : cat;
-                if (topCat && !seen.has(topCat.id)) { seen.add(topCat.id); topCats.push({ id: topCat.id, name: topCat.name }); }
-              }
-            }
-
-            // Filter by selected top-level category
-            const filtered = shelfCatFilter
-              ? shelfProducts.filter(p => {
-                  const cat = shelfProductCategories.find(c => c.id === p.product_category_id);
-                  const topId = cat?.parent_id
-                    ? shelfProductCategories.find(c => c.id === cat.parent_id)?.id
-                    : cat?.id;
-                  return topId === shelfCatFilter;
-                })
-              : shelfProducts;
-
-            // Sort by urgency (critical first, healthy last)
-            const sorted = [...filtered].sort((a, b) =>
-              urgencyScore(a, todayDateStr, ahead30Str) - urgencyScore(b, todayDateStr, ahead30Str)
-            );
-
-            // Helper: get category dot color
             function getDotColor(p: Product): string {
               const cat = shelfProductCategories.find(c => c.id === p.product_category_id);
               const topCat = cat?.parent_id ? shelfProductCategories.find(c => c.id === cat.parent_id) : cat;
               return getCategoryColor(topCat?.name ?? '').dot;
             }
 
+            // Only show products that need attention (low or depleted)
+            const needsAttention = shelfProducts.filter(p => {
+              const pct = p.remaining_amount != null && p.container_size && p.container_size > 0
+                ? p.remaining_amount / p.container_size : null;
+              return p.is_depleted || (pct != null && pct < 0.2);
+            }).sort((a, b) => urgencyScore(a, todayDateStr, ahead30Str) - urgencyScore(b, todayDateStr, ahead30Str));
+
             return (
               <div
                 className="flex-1 min-w-0 flex flex-col bg-stone border border-glow-border rounded-2xl overflow-hidden"
-                style={{ boxShadow: '0 1px 3px rgba(43,40,35,0.06)' }}
+                style={{ boxShadow: '0 1px 3px rgba(53,39,32,0.06)' }}
               >
                 <div className="flex-shrink-0 px-5 pt-5 pb-3 border-b border-glow-border flex items-center justify-between">
                   <p className="label-overline">Shelf</p>
@@ -1930,59 +1797,21 @@ export default function DashboardClient({
                   </Link>
                 </div>
 
-                {/* Category filter pills — always show when any products have categories */}
-                {topCats.length > 0 && (
-                  <div style={{ padding: '8px 20px 4px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                    <button
-                      onClick={() => setShelfCatFilter(null)}
-                      style={{
-                        fontSize: '11px', fontWeight: 500, padding: '3px 10px',
-                        borderRadius: '100px', border: '1px solid',
-                        borderColor: shelfCatFilter === null ? '#2b2823' : '#cdc6b6',
-                        background: shelfCatFilter === null ? '#2b2823' : 'transparent',
-                        color: shelfCatFilter === null ? '#efe9dd' : '#6b665e',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      All
-                    </button>
-                    {topCats.map(tc => (
-                      <button
-                        key={tc.id}
-                        onClick={() => setShelfCatFilter(tc.id === shelfCatFilter ? null : tc.id)}
-                        style={{
-                          fontSize: '11px', padding: '3px 10px',
-                          borderRadius: '100px', border: '1px solid',
-                          borderColor: shelfCatFilter === tc.id ? '#2b2823' : '#cdc6b6',
-                          background: shelfCatFilter === tc.id ? '#2b2823' : 'transparent',
-                          color: shelfCatFilter === tc.id ? '#efe9dd' : '#6b665e',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        {tc.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {shelfProducts.length === 0 ? (
+                {needsAttention.length === 0 ? (
                   <div className="flex-1 flex items-center justify-center px-5 py-8">
-                    <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontStyle: 'italic', fontSize: '18px', color: '#a8a297', textAlign: 'center' }}>
-                      Your shelf is empty.
+                    <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontStyle: 'italic', fontSize: '18px', color: '#a8998e', textAlign: 'center' }}>
+                      Your shelf is stocked.
                     </p>
                   </div>
                 ) : (
                   <div className="flex-1 px-5 py-2 overflow-y-auto">
-                    {sorted.map((p, i) => {
+                    {needsAttention.map((p, i) => {
                       const pct = p.remaining_amount != null && p.container_size && p.container_size > 0
                         ? Math.min(1, Math.max(0, p.remaining_amount / p.container_size)) : null;
-                      const needsRestock = p.is_depleted || (pct != null && pct < 0.2);
                       const dotColor = getDotColor(p);
                       const usesText = usesRemainingDisplay(p);
                       const isWarning = usesText.startsWith('less than') || usesText === 'out';
-
-                      // Inline bar fill color
-                      let barFill = '#2b2823';
+                      let barFill = '#352720';
                       if (pct != null) {
                         if (pct <= 0.3) barFill = '#c08a6e';
                         else if (pct <= 0.6) barFill = '#d4a478';
@@ -1992,34 +1821,30 @@ export default function DashboardClient({
                       return (
                         <div
                           key={p.id}
-                          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 0', borderBottom: i < sorted.length - 1 ? '1px solid #e8e2d5' : 'none' }}
+                          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 0', borderBottom: i < needsAttention.length - 1 ? '1px solid #e8e2d5' : 'none' }}
                         >
-                          {/* Dot */}
                           <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: dotColor, flexShrink: 0 }} />
-                          {/* Name */}
-                          <span style={{ flex: 1, fontSize: '13px', color: '#2b2823', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{p.name}</span>
-                          {/* Inline bar + uses text */}
+                          <span style={{ flex: 1, fontSize: '13px', color: '#352720', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{p.name}</span>
                           {pct != null ? (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
-                              <div style={{ width: '52px', height: '6px', borderRadius: '3px', backgroundColor: '#cdc6b6', overflow: 'hidden', flexShrink: 0 }}>
+                              <div style={{ width: '52px', height: '6px', borderRadius: '3px', backgroundColor: '#ddd4c4', overflow: 'hidden', flexShrink: 0 }}>
                                 <div style={{ height: '100%', width: `${pct * 100}%`, borderRadius: '3px', backgroundColor: barFill }} />
                               </div>
-                              <span style={{ fontSize: '11px', color: isWarning ? '#c08a6e' : '#a8a297', minWidth: '60px', textAlign: 'left' }}>
+                              <span style={{ fontSize: '11px', color: isWarning ? '#c08a6e' : '#a8998e', minWidth: '60px', textAlign: 'left' }}>
                                 {usesText}
                               </span>
                             </div>
                           ) : p.is_depleted ? (
                             <span style={{ fontSize: '11px', color: '#c08a6e', flexShrink: 0 }}>out</span>
                           ) : null}
-                          {/* Reorder link or Restock */}
-                          {needsRestock && p.reorder_url ? (
+                          {p.reorder_url ? (
                             <a href={p.reorder_url} target="_blank" rel="noopener noreferrer"
-                              style={{ fontSize: '11px', color: '#6b665e', flexShrink: 0, textDecoration: 'none' }}>
+                              style={{ fontSize: '11px', color: '#6b5c52', flexShrink: 0, textDecoration: 'none' }}>
                               Reorder ↗
                             </a>
-                          ) : needsRestock ? (
+                          ) : (
                             <Link href="/shelf" style={{ fontSize: '11px', color: '#c08a6e', flexShrink: 0 }}>Restock</Link>
-                          ) : null}
+                          )}
                         </div>
                       );
                     })}

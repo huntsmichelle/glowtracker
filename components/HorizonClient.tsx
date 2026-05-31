@@ -20,6 +20,8 @@ import { detectRoutineConflicts } from '@/lib/conflictDetection';
 interface Props {
   instances: InstanceWithTask[];
   userId: string;
+  summaryCount?: number;
+  summaryCategoryCount?: number;
 }
 
 function formatTime(hhmm: string): string {
@@ -38,7 +40,7 @@ function formatDateHeader(dateStr: string): string {
   return format(d, 'EEEE · MMM d');
 }
 
-export default function HorizonClient({ instances: initial, userId }: Props) {
+export default function HorizonClient({ instances: initial, userId, summaryCount = 0, summaryCategoryCount = 0 }: Props) {
   const [instances, setInstances] = useState(initial);
   const [loading, setLoading]     = useState<string | null>(null);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
@@ -128,7 +130,7 @@ export default function HorizonClient({ instances: initial, userId }: Props) {
     setLoading(null);
   }
 
-  // ── Deduplication — show only next-due instance per task series ────────────
+  // ── Deduplication ─────────────────────────────────────────────────────────
   function deduplicateByTask(items: InstanceWithTask[]): InstanceWithTask[] {
     const byTask = new Map<string, InstanceWithTask[]>();
     for (const inst of items) {
@@ -148,31 +150,160 @@ export default function HorizonClient({ instances: initial, userId }: Props) {
     return result.sort((a, b) => a.due_date_start.localeCompare(b.due_date_start));
   }
 
-  // ── Date grouping ──────────────────────────────────────────────────────────
-  function groupByDate(items: InstanceWithTask[]): Array<{ dateStr: string; items: InstanceWithTask[] }> {
-    const map = new Map<string, InstanceWithTask[]>();
-    for (const inst of items) {
-      const key = inst.due_date_start;
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(inst);
-    }
-    return [...map.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([dateStr, items]) => ({ dateStr, items }));
+  // ── Render ─────────────────────────────────────────────────────────────────
+
+  const todayStr = format(today(), 'yyyy-MM-dd');
+  const endOfWeek = new Date();
+  endOfWeek.setDate(endOfWeek.getDate() + 6);
+  const weekEnd = format(endOfWeek, 'yyyy-MM-dd');
+
+  const deduplicated = deduplicateByTask(instances);
+  const readyNow = deduplicated.filter(i => i.due_date_start <= todayStr);
+  const thisWeek = deduplicated.filter(i => i.due_date_start > todayStr && i.due_date_start <= weekEnd);
+  const later    = deduplicated.filter(i => i.due_date_start > weekEnd);
+
+  function SectionHeader({ label, accent }: { label: string; accent?: boolean }) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '4px' }}>
+        <span style={{
+          fontFamily: 'EB Garamond, Georgia, serif',
+          fontSize: '16px',
+          fontWeight: 500,
+          color: accent ? '#6e8c82' : '#352720',
+          whiteSpace: 'nowrap',
+        }}>
+          {label}
+        </span>
+        <div style={{ flex: 1, height: '1px', backgroundColor: '#ddd4c4' }} />
+      </div>
+    );
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  function RitualRow({ inst }: { inst: InstanceWithTask }) {
+    const status = deriveStatus(inst);
+    const isDue = status === 'due';
+    const categoryColor = getCategoryColor(inst.task?.category?.name ?? '').dot;
+    const isExpanded = expandedRow === inst.id;
+    const isLoading = loading === inst.id;
+    const routine = (inst.task as unknown as { routine?: { id: string; name: string; color: string } | null }).routine ?? null;
+    const provider = (inst.task as unknown as { service_provider?: { name: string } | null }).service_provider ?? null;
+    const prepNote = inst.task?.reminder_notes ?? inst.task?.description ?? null;
+
+    const nameLabel = provider ? `${inst.task?.name} · ${provider.name}` : inst.task?.name;
+
+    let windowLabel: string | null = null;
+    if (inst.due_date_end && inst.due_date_end !== inst.due_date_start) {
+      windowLabel = `${format(parseISO(inst.due_date_start), 'MMM d')} – ${format(parseISO(inst.due_date_end), 'MMM d')}`;
+    } else {
+      windowLabel = format(parseISO(inst.due_date_start), 'MMM d');
+    }
+
+    return (
+      <div style={{ borderBottom: '1px solid #ddd4c4' }}>
+        {/* Collapsed row */}
+        <div
+          style={{ display: 'flex', alignItems: 'center', padding: '12px 0', gap: '10px', cursor: 'pointer' }}
+          onClick={() => setExpandedRow(isExpanded ? null : inst.id)}
+        >
+          <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: categoryColor, flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontSize: '14px', fontWeight: 500, color: '#352720', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {nameLabel}
+            </p>
+          </div>
+          <span style={{ fontSize: '11px', color: '#a8998e', flexShrink: 0 }}>
+            {inst.task?.category?.name ?? ''}
+          </span>
+          <span style={{ fontSize: '13px', color: '#a8998e', flexShrink: 0 }}>
+            {isExpanded ? '∨' : '›'}
+          </span>
+        </div>
+
+        {/* Expanded state */}
+        {isExpanded && (
+          <div style={{ paddingBottom: '14px', paddingLeft: '16px' }}>
+            {/* Context */}
+            <div style={{ marginBottom: '10px' }}>
+              <p style={{ fontSize: '12px', color: '#6b5c52' }}>
+                {isDue ? 'Ready today' : `Window: ${windowLabel}`}
+              </p>
+              {prepNote && (
+                <p style={{ fontSize: '12px', color: '#6b5c52', marginTop: '2px' }}>
+                  {prepNote.slice(0, 100)}{prepNote.length > 100 ? '…' : ''}
+                </p>
+              )}
+            </div>
+
+            {/* Action bar */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0', flexWrap: 'wrap' }}>
+              {/* Keep — sage tint pill */}
+              <button
+                onClick={() => openCompleteModal(inst)}
+                disabled={isLoading}
+                style={{
+                  fontSize: '11px', fontWeight: 500, color: '#6e8c82',
+                  backgroundColor: 'rgba(110,140,130,0.28)', border: 'none',
+                  borderRadius: '100px', padding: '4px 12px', cursor: 'pointer',
+                  marginRight: '10px',
+                }}
+              >
+                Keep
+              </button>
+
+              {/* Text actions separated by · */}
+              <span style={{ fontSize: '11px', color: '#6b5c52' }}>
+                <button onClick={() => !isLoading && handleSkip(inst)} disabled={isLoading}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b5c52', fontSize: '11px', padding: 0 }}>
+                  Skip once
+                </button>
+                <span style={{ color: '#ddd4c4', margin: '0 6px' }}>·</span>
+                <button onClick={() => { setSnoozeDays(3); setSnoozeModal({ instance: inst }); }} disabled={isLoading}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b5c52', fontSize: '11px', padding: 0 }}>
+                  Move
+                </button>
+                <span style={{ color: '#ddd4c4', margin: '0 6px' }}>·</span>
+                <button onClick={() => openAdjustModal(inst)} disabled={isLoading}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b5c52', fontSize: '11px', padding: 0 }}>
+                  Plan around event
+                </button>
+              </span>
+
+              <span style={{ color: '#ddd4c4', margin: '0 6px' }}>·</span>
+              <Link href={`/instances/${inst.id}`}
+                style={{ fontSize: '11px', color: '#a8998e', textDecoration: 'none' }}>
+                Details
+              </Link>
+              <span style={{ color: '#ddd4c4', margin: '0 6px' }}>·</span>
+              <Link href={`/tasks/${inst.task_id}/edit`}
+                style={{ fontFamily: 'EB Garamond, Georgia, serif', fontStyle: 'italic', fontSize: '13px', color: '#a8998e', textDecoration: 'none' }}>
+                Edit ritual
+              </Link>
+            </div>
+
+            {routine && (
+              <div style={{ marginTop: '8px' }}>
+                <Link href={`/routines/${routine.id}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#6b5c52', textDecoration: 'none', border: '1px solid #ddd4c4', borderRadius: '100px', padding: '2px 10px', backgroundColor: '#faf4e6' }}>
+                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: routine.color, display: 'inline-block' }} />
+                  {routine.name}
+                </Link>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   if (instances.length === 0) {
     return (
       <div className="space-y-6">
         <PageHeader />
         <div className="flex flex-col items-center justify-center py-12 gap-3">
-          <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontStyle: 'italic', fontSize: '22px', color: '#2b2823' }}>
+          <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontStyle: 'italic', fontSize: '22px', color: '#352720' }}>
             Clear horizon.
           </p>
-          <div style={{ width: '40px', height: '1px', backgroundColor: '#cdc6b6' }} />
-          <Link href="/tasks/new" style={{ fontSize: '10px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#a8a297', cursor: 'pointer' }}>
+          <div style={{ width: '40px', height: '1px', backgroundColor: '#ddd4c4' }} />
+          <Link href="/tasks/new" style={{ fontSize: '10px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#a8998e', cursor: 'pointer' }}>
             Add your first ritual
           </Link>
         </div>
@@ -181,141 +312,40 @@ export default function HorizonClient({ instances: initial, userId }: Props) {
     );
   }
 
-  const deduplicated = deduplicateByTask(instances);
-  const dateGroups = groupByDate(deduplicated);
-  const todayStr = format(today(), 'yyyy-MM-dd');
-
   return (
     <div className="space-y-6">
       <PageHeader />
 
-      <div className="space-y-6">
-        {dateGroups.map(({ dateStr, items }, groupIdx) => (
-          <div key={dateStr}>
-            {/* Date header */}
-            <div style={{ paddingTop: groupIdx === 0 ? '4px' : '24px', paddingBottom: '8px', borderBottom: '1px solid #cdc6b6', marginBottom: '4px' }}>
-              <span style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '16px', fontWeight: 500, color: '#000000', letterSpacing: '0.01em' }}>
-                {formatDateHeader(dateStr)}
-              </span>
-            </div>
+      {/* Summary bar */}
+      {summaryCount > 0 && (
+        <p style={{ fontSize: '13px', color: '#6b5c52' }}>
+          {summaryCount} ritual{summaryCount !== 1 ? 's' : ''} across {summaryCategoryCount} {summaryCategoryCount !== 1 ? 'categories' : 'category'} in the next 30 days
+        </p>
+      )}
 
-            {/* Rows for this date */}
-            {items.map(inst => {
-              const status       = deriveStatus(inst);
-              const isToday      = dateStr === todayStr;
-              const isDue        = status === 'due';
-              const categoryColor = getCategoryColor(inst.task?.category?.name ?? '').dot;
-              const isExpanded   = expandedRow === inst.id;
-              const isLoading    = loading === inst.id;
-              const routine      = (inst.task as unknown as { routine?: { id: string; name: string; color: string } | null }).routine ?? null;
-              const prepNote     = inst.task?.reminder_notes ?? inst.task?.description ?? null;
+      {/* Ready now section */}
+      {readyNow.length > 0 && (
+        <div className="space-y-0">
+          <SectionHeader label="Ready now" accent />
+          {readyNow.map(inst => <RitualRow key={inst.id} inst={inst} />)}
+        </div>
+      )}
 
-              return (
-                <div key={inst.id} style={{ borderBottom: '1px solid #cdc6b6' }}>
-                  {/* Default row */}
-                  <div
-                    style={{ display: 'flex', alignItems: 'center', padding: '12px 0', gap: '10px', cursor: 'pointer' }}
-                    onClick={() => setExpandedRow(isExpanded ? null : inst.id)}
-                  >
-                    {/* Sage dot */}
-                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: categoryColor, flexShrink: 0 }} />
+      {/* This week section */}
+      {thisWeek.length > 0 && (
+        <div className="space-y-0">
+          <SectionHeader label="This week" />
+          {thisWeek.map(inst => <RitualRow key={inst.id} inst={inst} />)}
+        </div>
+      )}
 
-                    {/* Content */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <p style={{ fontSize: '14px', fontWeight: 500, color: '#2b2823', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {inst.task?.name}
-                        </p>
-                        {isDue && (
-                          <span style={{ fontSize: '10px', fontWeight: 600, color: '#8ea394', flexShrink: 0 }}>NOW</span>
-                        )}
-                      </div>
-                      <p style={{ fontSize: '10px', letterSpacing: '0.14em', textTransform: 'uppercase', color: '#a8a297', marginTop: '1px' }}>
-                        {inst.task?.category?.name ?? ''}
-                        {inst.scheduled_time && ` · ${formatTime(inst.scheduled_time)}`}
-                      </p>
-                    </div>
-
-                    {/* Right action */}
-                    {isToday || isDue ? (
-                      <button
-                        onClick={e => { e.stopPropagation(); openCompleteModal(inst); }}
-                        disabled={isLoading}
-                        style={{ width: '20px', height: '20px', borderRadius: '50%', border: '1.5px solid #cdc6b6', backgroundColor: 'transparent', flexShrink: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                        aria-label="Mark kept"
-                      />
-                    ) : (
-                      <span style={{ fontSize: '14px', color: '#a8a297', flexShrink: 0 }}>›</span>
-                    )}
-                  </div>
-
-                  {/* Expanded state */}
-                  {isExpanded && (
-                    <div style={{ paddingBottom: '12px', paddingLeft: '16px' }}>
-                      {prepNote && (
-                        <p style={{ fontSize: '12px', color: '#6b665e', marginBottom: '8px' }}>
-                          {prepNote.slice(0, 80)}{prepNote.length > 80 ? '…' : ''}
-                        </p>
-                      )}
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
-                        <button
-                          onClick={() => openCompleteModal(inst)}
-                          disabled={isLoading}
-                          style={{ fontSize: '11px', color: '#6b665e', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-                        >
-                          Keep
-                        </button>
-                        <button
-                          onClick={() => !isLoading && handleSkip(inst)}
-                          disabled={isLoading}
-                          style={{ fontSize: '11px', color: '#6b665e', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-                        >
-                          Pass
-                        </button>
-                        <button
-                          onClick={() => { setSnoozeDays(3); setSnoozeModal({ instance: inst }); }}
-                          disabled={isLoading}
-                          style={{ fontSize: '11px', color: '#6b665e', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-                        >
-                          Defer
-                        </button>
-                        <button
-                          onClick={() => openAdjustModal(inst)}
-                          disabled={isLoading}
-                          style={{ fontSize: '11px', color: '#6b665e', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-                        >
-                          Adjust for event
-                        </button>
-                        <Link
-                          href={`/instances/${inst.id}`}
-                          style={{ fontSize: '11px', color: '#6b665e', textDecoration: 'none' }}
-                        >
-                          Details
-                        </Link>
-                        <button
-                          onClick={() => setDeleteModal({ instance: inst })}
-                          disabled={isLoading}
-                          style={{ fontSize: '11px', color: '#a8a297', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                      {routine && (
-                        <div style={{ marginTop: '8px' }}>
-                          <Link href={`/routines/${routine.id}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#6b665e', textDecoration: 'none', border: '1px solid #cdc6b6', borderRadius: '100px', padding: '2px 10px', backgroundColor: '#f6f1e6' }}>
-                            <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: routine.color, display: 'inline-block' }} />
-                            {routine.name}
-                          </Link>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ))}
-      </div>
+      {/* Later section */}
+      {later.length > 0 && (
+        <div className="space-y-0">
+          <SectionHeader label="Later" />
+          {later.map(inst => <RitualRow key={inst.id} inst={inst} />)}
+        </div>
+      )}
 
       {Modals()}
     </div>
@@ -451,12 +481,13 @@ export default function HorizonClient({ instances: initial, userId }: Props) {
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="label-overline mb-1">Looking ahead</p>
-          <h1 className="font-display text-3xl text-charcoal">Coming up</h1>
-          <p className="text-sm text-warm-mid mt-1">Your rituals on the horizon.</p>
+          <h1 style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '28px', fontWeight: 400, color: '#352720' }}>
+            Horizon
+          </h1>
         </div>
         <Link
           href="/tasks/new"
-          style={{ flexShrink: 0, border: '1px solid #2b2823', backgroundColor: 'transparent', color: '#2b2823', fontSize: '13px', fontWeight: 500, borderRadius: '100px', padding: '6px 16px', textDecoration: 'none' }}
+          style={{ flexShrink: 0, border: '1px solid #352720', backgroundColor: 'transparent', color: '#352720', fontSize: '13px', fontWeight: 500, borderRadius: '100px', padding: '6px 16px', textDecoration: 'none' }}
         >
           + Add ritual
         </Link>

@@ -157,6 +157,20 @@ export async function resolveAutoAdjust(
 }
 
 /**
+ * Replace — anchor task (task_a) always wins automatically.
+ * The subordinate task's instance is skipped silently.
+ * Both cadences continue independently from their own last occurrence.
+ */
+export async function resolveReplace(
+  conflict: RoutineConflict,
+  skipTarget: SkipTarget
+): Promise<void> {
+  const subordinateInstanceId = skipTarget === 'b' ? conflict.instance_b_id : conflict.instance_a_id;
+  await db().from('instances').update({ status: 'skipped' }).eq('id', subordinateInstanceId);
+  await markResolved(conflict.id, 'replace' as ConflictResolution, { skip_target: skipTarget });
+}
+
+/**
  * Save a pair's default resolution for future conflicts.
  */
 export async function savePairDefault(

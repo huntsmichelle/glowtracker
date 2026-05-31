@@ -36,11 +36,11 @@ const navLinks = [
     ),
   },
   {
-    href: '/tasks',
-    label: 'Rituals',
+    href: '/library',
+    label: 'Library',
     icon: (
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zM12 6v6l4 2" />
+        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
       </svg>
     ),
   },
@@ -76,7 +76,9 @@ export default function NavBar() {
   }
 
   function isActive(href: string) {
-    return href === '/' ? pathname === '/' : pathname.startsWith(href);
+    if (href === '/') return pathname === '/';
+    if (href === '/library') return pathname.startsWith('/library') || pathname.startsWith('/tasks') || pathname.startsWith('/routines');
+    return pathname.startsWith(href);
   }
 
   return (
@@ -107,12 +109,12 @@ export default function NavBar() {
                       left: 0,
                       width: '3px',
                       height: '16px',
-                      backgroundColor: '#8ea394',
+                      backgroundColor: '#6e8c82',
                       borderRadius: '0 2px 2px 0',
                     }} />
                   )}
-                  <span style={{ color: active ? '#2b2823' : '#6b665e' }}>{link.icon}</span>
-                  <span style={{ color: active ? '#2b2823' : '#6b665e', fontSize: '14px', fontWeight: active ? 500 : 400 }}>{link.label}</span>
+                  <span style={{ color: active ? '#352720' : '#6b5c52' }}>{link.icon}</span>
+                  <span style={{ color: active ? '#352720' : '#6b5c52', fontSize: '14px', fontWeight: active ? 500 : 400 }}>{link.label}</span>
                 </Link>
               );
             })}

@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-sans);background:transparent;padding:12px 0}
+h2.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+.page-group{margin-bottom:24px}
+.group-label{font-size:10px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--color-text-tertiary);margin-bottom:8px;padding-left:4px}
+.page-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.page-card{background:var(--color-background-primary);border:.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:12px;cursor:pointer;transition:border-color .15s}
+.page-card:hover{border-color:var(--color-border-secondary)}
+.page-card.active{border-color:var(--color-border-primary)}
+.card-header{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.card-icon{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:13px}
+.icon-today{background:#f3ecd9;color:#6e8c82}
+.icon-horizon{background:#f3ecd9;color:#6e8c82}
+.icon-rituals{background:#f3ecd9;color:#6e8c82}
+.icon-routines{background:#f3ecd9;color:#6e8c82}
+.icon-shelf{background:#f3ecd9;color:#6e8c82}
+.icon-settings{background:var(--color-background-secondary);color:var(--color-text-secondary)}
+.icon-auth{background:var(--color-background-secondary);color:var(--color-text-secondary)}
+.card-title{font-size:13px;font-weight:500;color:var(--color-text-primary)}
+.card-route{font-size:10px;color:var(--color-text-tertiary);font-family:var(--font-mono);margin-bottom:8px}
+.section-list{list-style:none;display:flex;flex-direction:column;gap:3px}
+.section-list li{font-size:11px;color:var(--color-text-secondary);display:flex;align-items:flex-start;gap:5px}
+.section-list li::before{content:"";width:4px;height:4px;border-radius:50%;background:#6e8c82;margin-top:5px;flex-shrink:0}
+.detail-panel{background:var(--color-background-secondary);border:.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:16px;margin-top:16px;display:none}
+.detail-panel.visible{display:block}
+.detail-title{font-size:14px;font-weight:500;color:var(--color-text-primary);margin-bottom:4px}
+.detail-route{font-size:11px;color:var(--color-text-tertiary);font-family:var(--font-mono);margin-bottom:12px}
+.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.detail-section h4{font-size:10px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--color-text-tertiary);margin-bottom:6px}
+.detail-section ul{list-style:none;display:flex;flex-direction:column;gap:4px}
+.detail-section ul li{font-size:12px;color:var(--color-text-secondary);padding-left:10px;position:relative}
+.detail-section ul li::before{content:"›";position:absolute;left:0;color:var(--color-text-tertiary)}
+.layout-preview{background:var(--color-background-primary);border:.5px solid var(--color-border-tertiary);border-radius:8px;padding:10px;font-size:11px;color:var(--color-text-tertiary);font-family:var(--font-mono);white-space:pre;line-height:1.6}
+.nav-flow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}
+.nav-pill{font-size:10px;padding:2px 8px;border-radius:100px;background:var(--color-background-primary);border:.5px solid var(--color-border-tertiary);color:var(--color-text-secondary)}
+.nav-arrow{font-size:11px;color:var(--color-text-tertiary)}
+</style>
+</head>
+<body>
+<h2 class="sr-only">GlowLoop web app sitemap showing all pages, layouts, and navigation flows</h2>
+
+<div class="page-group">
+  <div class="group-label">Main navigation</div>
+  <div class="page-grid">
+
+    <div class="page-card" onclick="showDetail('today')">
+      <div class="card-header">
+        <div class="card-icon icon-today"><i class="ti ti-sun"></i></div>
+        <div class="card-title">Today</div>
+      </div>
+      <div class="card-route">/today</div>
+      <ul class="section-list">
+        <li>Editorial greeting + date</li>
+        <li>In Sequence card + stats</li>
+        <li>Rhythm calendar card</li>
+        <li>Spend section</li>
+        <li>Shelf card (right col)</li>
+      </ul>
+    </div>
+
+    <div class="page-card" onclick="showDetail('horizon')">
+      <div class="card-header">
+        <div class="card-icon icon-horizon"><i class="ti ti-sunrise"></i></div>
+        <div class="card-title">Horizon</div>
+      </div>
+      <div class="card-route">/horizon</div>
+      <ul class="section-list">
+        <li>Date-grouped instance list</li>
+        <li>One instance per task</li>
+        <li>Defer / Pass / Adjust actions</li>
+        <li>Routine group headers</li>
+      </ul>
+    </div>
+
+    <div class="page-card" onclick="showDetail('rituals')">
+      <div class="card-header">
+        <div class="card-icon icon-rituals"><i class="ti ti-sparkles"></i></div>
+        <div class="card-title">Rituals</div>
+      </div>
+      <div class="card-route">/tasks</div>
+      <ul class="section-list">
+        <li>Category card grid landing</li>
+        <li>Drill-down to category list</li>
+        <li>Sorted by next due date</li>
+        <li>Create / edit ritual</li>
+      </ul>
+    </div>
+
+    <div class="page-card" onclick="showDetail('routines')">
+      <div class="card-header">
+        <div class="card-icon icon-routines"><i class="ti ti-layout-grid"></i></div>
+        <div class="card-title">Routines</div>
+      </div>
+      <div class="card-route">/routines</div>
+      <ul class="section-list">
+        <li>User routines list</li>
+        <li>Template inspiration tiles</li>
+        <li>Conflict badge per routine</li>
+        <li>Browse templates</li>
+      </ul>
+    </div>
+
+    <div class="page-card" onclick="showDetail('shelf')">
+      <div class="card-header">
+        <div class="card-icon icon-shelf"><i class="ti ti-package"></i></div>
+        <div class="card-title">Shelf</div>
+      </div>
+      <div class="card-route">/shelf</div>
+      <ul class="section-list">
+        <li>Category filter pills</li>
+        <li>Products grouped + subgrouped</li>
+        <li>Depletion battery bars</li>
+        <li>Add / edit product slide-over</li>
+      </ul>
+    </div>
+
+  </div>
+</div>
+
+<div class="page-group">
+  <div class="group-label">Sub-pages</div>
+  <div class="page-grid">
+
+    <div class="page-card" onclick="showDetail('ritual-detail')">
+      <div class="card-header">
+        <div class="card-icon icon-rituals"><i class="ti ti-file-text"></i></div>
+        <div class="card-title">Ritual detail</div>
+      </div>
+      <div class="card-route">/tasks/[id]</div>
+      <ul class="section-list">
+        <li>Instance history log</li>
+        <li>Next scheduled date</li>
+        <li>Linked products + depletion</li>
+        <li>Edit / delete actions</li>
+      </ul>
+    </div>
+
+    <div class="page-card" onclick="showDetail('ritual-new')">
+      <div class="card-header">
+        <div class="card-icon icon-rituals"><i class="ti ti-plus"></i></div>
+        <div class="card-title">New ritual form</div>
+      </div>
+      <div class="card-route">/tasks/new</div>
+      <ul class="section-list">
+        <li>Section 1: Core details</li>
+        <li>Section 2: Frequency</li>
+        <li>Section 3: Services & products</li>
+        <li>Section 4: Reminders & prep</li>
+      </ul>
+    </div>
+
+    <div class="page-card" onclick="showDetail('routine-detail')">
+      <div class="card-header">
+        <div class="card-icon icon-routines"><i class="ti ti-git-merge"></i></div>
+        <div class="card-title">Routine detail</div>
+      </div>
+      <div class="card-route">/routines/[id]</div>
+      <ul class="section-list">
+        <li>Task list with slide-over edit</li>
+        <li>Overlap preferences toggle</li>
+        <li>Conflict rules panel</li>
+        <li>Timing rules panel</li>
+      </ul>
+    </div>
+
+    <div class="page-card" onclick="showDetail('templates')">
+      <div class="card-header">
+        <div class="card-icon icon-routines"><i class="ti ti-template"></i></div>
+        <div class="card-title">Template library</div>
+      </div>
+      <div class="card-route">/routines/templates</div>
+      <ul class="section-list">
+        <li>System templates by category</li>
+        <li>User-created templates</li>
+        <li>3-step use flow (modal)</li>
+      </ul>
+    </div>
+
+    <div class="page-card" onclick="showDetail('settings')">
+      <div class="card-header">
+        <div class="card-icon icon-settings"><i class="ti ti-settings"></i></div>
+        <div class="card-title">Settings</div>
+      </div>
+      <div class="card-route">/settings</div>
+      <ul class="section-list">
+        <li>Profile / display name</li>
+        <li>Re-trigger onboarding</li>
+        <li>Admin tools (you only)</li>
+      </ul>
+    </div>
+
+    <div class="page-card" onclick="showDetail('onboarding')">
+      <div class="card-header">
+        <div class="card-icon icon-auth"><i class="ti ti-user-plus"></i></div>
+        <div class="card-title">Onboarding</div>
+      </div>
+      <div class="card-route">/onboarding (overlay)</div>
+      <ul class="section-list">
+        <li>Step 1: Name</li>
+        <li>Step 2: Intent + event date</li>
+        <li>Step 3: Ritual or routine</li>
+        <li>Step 4: Template or scratch</li>
+      </ul>
+    </div>
+
+    <div class="page-card" onclick="showDetail('auth')">
+      <div class="card-header">
+        <div class="card-icon icon-auth"><i class="ti ti-lock"></i></div>
+        <div class="card-title">Auth</div>
+      </div>
+      <div class="card-route">/login · /signup</div>
+      <ul class="section-list">
+        <li>Email + password login</li>
+        <li>Sign up flow</li>
+        <li>Google OAuth (dormant)</li>
+      </ul>
+    </div>
+
+  </div>
+</div>
+
+<div id="detail-panel" class="detail-panel">
+  <div class="detail-title" id="d-title"></div>
+  <div class="detail-route" id="d-route"></div>
+  <div class="detail-grid">
+    <div class="detail-section">
+      <h4>Layout</h4>
+      <div class="layout-preview" id="d-layout"></div>
+    </div>
+    <div class="detail-section">
+      <h4>Key sections</h4>
+      <ul id="d-sections"></ul>
+    </div>
+  </div>
+  <div style="margin-top:12px">
+    <div class="detail-section">
+      <h4>Navigation from here</h4>
+      <div class="nav-flow" id="d-nav"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const pages = {
+  today: {
+    title: 'Today',
+    route: '/today',
+    layout: '┌──────┬────────────┬────────────┬──────────┐\n│ Nav  │ In Sequence│   Rhythm   │  Shelf   │\n│ 220px│  flex-1    │  flex-1    │ flex-1   │\n│      │ stats row  │ calendar   │ products │\n│      │ ritual list│ spend bar  │ + filter │\n└──────┴────────────┴────────────┴──────────┘',
+    sections: ['Greeting: time-of-day adaptive, EB Garamond 44px','Stats: KEPT % / STREAK / DUE in In Sequence card','Ritual rows: ✓ kept + ✕ pass, single tap','Calendar: full month, date tap → day overlay','Spend: actual + projected + bar','Shelf: urgency-sorted, depletion bars, filter pills'],
+    nav: ['Horizon','Rituals','Shelf','Log ritual (FAB)','Calendar day overlay']
+  },
+  horizon: {
+    title: 'Horizon',
+    route: '/horizon',
+    layout: '┌──────┬──────────────────────────────┐\n│ Nav  │  Coming up                   │\n│ 220px│  ─── Wed · May 29 ─────────  │\n│      │  ● Ritual name    Category › │\n│      │  ─── Thu · May 30 ─────────  │\n│      │  ● Ritual name    Category › │\n└──────┴──────────────────────────────┘',
+    sections: ['One instance per task (deduped)','Date group headers: EB Garamond 16px pure black','Sage dot + name + category kicker + chevron','Routine group cards above date groups','Row expand: Pass / Defer / Adjust / Delete','Pull to refresh'],
+    nav: ['Today','Ritual detail (chevron)','Routine detail (group header)']
+  },
+  rituals: {
+    title: 'Rituals',
+    route: '/tasks',
+    layout: '┌──────┬──────────────────────────────┐\n│ Nav  │  Rituals                     │\n│      │  ┌────┐ ┌────┐ ┌────┐ ┌────┐│\n│      │  │Skin│ │Hair│ │Nail│ │Brow││\n│      │  │4   │ │3   │ │2   │ │1   ││\n│      │  └────┘ └────┘ └────┘ └────┘│\n└──────┴──────────────────────────────┘',
+    sections: ['Category card grid: 2/3/4 col by screen width','TODAY / DUE badge on tiles','Tap tile → filtered list for that category','List sorted soonest-first','Hairline dividers, no card backgrounds','+ Add Ritual pre-selects category'],
+    nav: ['Ritual detail','New ritual form','Routine detail (if in routine)']
+  },
+  routines: {
+    title: 'Routines',
+    route: '/routines',
+    layout: '┌──────┬──────────────────────────────┐\n│ Nav  │  Routines                    │\n│      │  [user routine cards]        │\n│      │                              │\n│      │  INSPIRATION                 │\n│      │  [Hair] [Skin] [Nails]...    │\n│      │  category tiles → overlay   │\n└──────┴──────────────────────────────┘',
+    sections: ['User routine cards with conflict badge','Conflict badge: pending only, hides when resolved','Inspiration section: system template category tiles','Tile tap → overlay with templates in that category','Use template → 3-step modal (rename + countdown + create)','Templates grouped by category'],
+    nav: ['Routine detail','Template library','Use template flow']
+  },
+  shelf: {
+    title: 'Shelf',
+    route: '/shelf',
+    layout: '┌──────┬──────────────────────────────┐\n│ Nav  │  Shelf                       │\n│      │  [All][Hair][Skin][Nails]... │\n│      │  HAIR                        │\n│      │    Color                     │\n│      │    ┌──────┐ ┌──────┐         │\n│      │    │ Prod │ │ Prod │         │\n└──────┴──────────────────────────────┘',
+    sections: ['Category filter pills (dynamic, used categories only)','Two-level grouping: HAIR → Color / Care','Compact product cards: no image, battery bar','Uses remaining display (not percentage)','Reorder link when low + restock button','Add/edit product slide-over (min 480px)'],
+    nav: ['Product slide-over','Add product','Reorder URL (external)']
+  },
+  'ritual-detail': {
+    title: 'Ritual detail',
+    route: '/tasks/[id]',
+    layout: '┌──────┬──────────────────────────────┐\n│ Nav  │  [Category · Evening]        │\n│      │  Ritual name                 │\n│      │  ─────────────────────────── │\n│      │  CADENCE | NEXT | STREAK     │\n│      │  Products + depletion        │\n│      │  Recent log                  │\n└──────┴──────────────────────────────┘',
+    sections: ['Overline: category + time of day','Stats row: cadence / next / streak','Products in use with depletion bars','Recent instance log (last fortnight)','Mark kept tonight primary action','Edit / delete in action menu'],
+    nav: ['Edit ritual form','Shelf product detail','Mark kept']
+  },
+  'ritual-new': {
+    title: 'New ritual form',
+    route: '/tasks/new',
+    layout: '┌──────┬──────────────────────────────┐\n│ Nav  │  Cancel  NEW RITUAL  Save    │\n│      │  ─────────────────────────── │\n│      │  1. Core details             │\n│      │  2. Frequency                │\n│      │  3. Services & products      │\n│      │  4. Reminders & prep         │\n└──────┴──────────────────────────────┘',
+    sections: ['Section 1: category pills + name + description','Section 2: frequency type + analog clock picker','Section 3: service provider collapsible + products','Section 4: prep notes + reminder picker','Make this a habit toggle (autocomplete)','Math-linked: size ÷ per-use = uses per container'],
+    nav: ['Today (after save)','Routine detail (if from routine)']
+  },
+  'routine-detail': {
+    title: 'Routine detail',
+    route: '/routines/[id]',
+    layout: '┌──────┬──────────────────────────────┐\n│ Nav  │  [Routine name]              │\n│      │  Task list (slide-over edit) │\n│      │  ─────────────────────────── │\n│      │  OVERLAP PREFERENCES         │\n│      │  CONFLICT RULES (if managed) │\n│      │  TIMING RULES                │\n└──────┴──────────────────────────────┘',
+    sections: ['Task list: click → slide-over editor','Overlap intent: independent / managed','Conflict rules: No Conflict / Ask / Auto-Adjust / Skip One','Timing rules: proximity windows + direction','Save All Rules → resolves all pending conflicts','Delete routine: keep tasks or delete all'],
+    nav: ['Ritual edit slide-over','Conflict resolution modal','Timing rule config']
+  },
+  templates: {
+    title: 'Template library',
+    route: '/routines/templates',
+    layout: '┌──────┬──────────────────────────────┐\n│ Nav  │  Browse templates            │\n│      │  HAIR                        │\n│      │  Hair Color Routine    Use › │\n│      │  Blonde Maintenance    Use › │\n│      │  SKIN                        │\n│      │  Basic Skincare        Use › │\n└──────┴──────────────────────────────┘',
+    sections: ['14 system templates across 6 categories','User templates shown below system ones','Grouped by template_category','Use template → 3-step modal flow','Step 1: rename / Step 2: event? / Step 3: create','Countdown mode pre-fills from onboarding event date'],
+    nav: ['Use template modal','Routine detail (after creation)']
+  },
+  settings: {
+    title: 'Settings',
+    route: '/settings',
+    layout: '┌──────┬──────────────────────────────┐\n│ Nav  │  Settings                    │\n│      │  Profile                     │\n│      │    Display name              │\n│      │  Getting started             │\n│      │    Re-trigger setup  →       │\n│      │    (hidden after complete)   │\n└──────┴──────────────────────────────┘',
+    sections: ['Display name (set during onboarding)','Re-trigger setup link (hidden when complete)','Admin section (Michelle only): system templates','Google OAuth toggle (dormant, Phase 8)','Profile management'],
+    nav: ['Onboarding flow (re-trigger)']
+  },
+  onboarding: {
+    title: 'Onboarding',
+    route: '/onboarding (overlay)',
+    layout: '┌────────────────────────────────────┐\n│  ● ○ ○ ○   Step 1 of 4            │\n│                                    │\n│  Good to meet you.                 │\n│  [ First name          ]           │\n│                   [ Continue → ]   │\n└────────────────────────────────────┘',
+    sections: ['Step 1: name → saves to profiles.display_name','Step 2: intent (event date or rolling)','Step 3: ritual or routine (skippable)','Step 4: template or scratch (skippable)','Skipping sets banner on Today for 7 days','Re-enterable from Settings after skip'],
+    nav: ['Today (after completion or skip)','Template library (if template chosen)','New ritual form (if build own chosen)']
+  },
+  auth: {
+    title: 'Auth',
+    route: '/login · /signup',
+    layout: '┌────────────────────────────────────┐\n│                                    │\n│  GlowLoop                          │\n│  Your routine, on your schedule.   │\n│                                    │\n│  [ Email                 ]         │\n│  [ Password              ]         │\n│           [ Sign in ]              │\n└────────────────────────────────────┘',
+    sections: ['Email + password (Supabase auth)','Auto-redirects to /today if session exists','New user → /onboarding after signup','Google OAuth button (hidden, NEXT_PUBLIC_GOOGLE_AUTH_ENABLED=false)','No email confirmation required (toggled off)'],
+    nav: ['Today (after login)','Onboarding (after signup)']
+  }
+};
+
+function showDetail(id) {
+  const p = pages[id];
+  const panel = document.getElementById('detail-panel');
+  document.getElementById('d-title').textContent = p.title;
+  document.getElementById('d-route').textContent = p.route;
+  document.getElementById('d-layout').textContent = p.layout;
+  const ul = document.getElementById('d-sections');
+  ul.innerHTML = p.sections.map(s => `<li>${s}</li>`).join('');
+  const nav = document.getElementById('d-nav');
+  nav.innerHTML = p.nav.map((n,i) =>
+    (i > 0 ? '<span class="nav-arrow">·</span>' : '') +
+    `<span class="nav-pill">${n}</span>`
+  ).join('');
+  panel.classList.add('visible');
+  panel.scrollIntoView({behavior:'smooth',block:'nearest'});
+  document.querySelectorAll('.page-card').forEach(c => c.classList.remove('active'));
+}
+</script>
+</body>
+</html>

@@ -2,25 +2,40 @@
 
 /* ── Design Tokens (CSS variables — used in CSS rules) ─────────────── */
 :root {
-  --color-bg-base:        #efe9dd;
-  --color-bg-surface:     #f6f1e6;
-  --color-bg-sunken:      #ede8db;
-  --color-bg-overlay:     #f6f1e6;
-  --color-text-primary:   #2b2823;
-  --color-text-secondary: #6b665e;
-  --color-text-tertiary:  #a8a297;
-  --color-text-inverse:   #efe9dd;
-  --color-accent-sage:    #8ea394;
-  --color-accent-sage-lt: #c6d8cc;
+  --cream:       #f3ecd9;
+  --paper-soft:  #faf4e6;
+  --ink:         #352720;
+  --ink-soft:    #6b5c52;
+  --ink-faint:   #a8998e;
+  --divider:     #ddd4c4;
+  --sage:        #6e8c82;
+  --bluegrey:    #93a3b1;
+  --refresh:     #c08a6e;
+  --dusty-rose:  #c4918a;
+  --blush:       #d4a8a0;
+  --apricot:     #d4a478;
+  --marigold:    #d4b870;
+  --plum:        #9D91B5;
+
+  /* Legacy aliases (keep for backward compat while migrating) */
+  --color-bg-base:        #f3ecd9;
+  --color-bg-surface:     #faf4e6;
+  --color-bg-sunken:      #f3ecd9;
+  --color-bg-overlay:     #faf4e6;
+  --color-text-primary:   #352720;
+  --color-text-secondary: #6b5c52;
+  --color-text-tertiary:  #a8998e;
+  --color-text-inverse:   #f3ecd9;
+  --color-accent-sage:    #6e8c82;
+  --color-accent-sage-lt: rgba(110,140,130,0.15);
   --color-accent-refresh: #c08a6e;
-  --color-accent-refresh-lt: #e8c9b8;
+  --color-accent-refresh-lt: rgba(192,138,110,0.15);
   --color-accent-bluegrey: #93a3b1;
-  --color-accent-taupe:   #b5a89a;
-  --color-border:         #cdc6b6;
-  --color-border-strong:  #a8a297;
-  --shadow-card:   0 1px 3px rgba(43,40,35,0.06), 0 1px 2px rgba(43,40,35,0.04);
-  --shadow-lifted: 0 4px 12px rgba(43,40,35,0.08), 0 2px 4px rgba(43,40,35,0.05);
-  --shadow-modal:  0 20px 60px rgba(43,40,35,0.15), 0 8px 20px rgba(43,40,35,0.08);
+  --color-border:         #ddd4c4;
+  --color-border-strong:  #a8998e;
+  --shadow-card:   0 1px 3px rgba(53,39,32,0.06), 0 1px 2px rgba(53,39,32,0.04);
+  --shadow-lifted: 0 4px 12px rgba(53,39,32,0.08), 0 2px 4px rgba(53,39,32,0.05);
+  --shadow-modal:  0 20px 60px rgba(53,39,32,0.15), 0 8px 20px rgba(53,39,32,0.08);
   --font-display: 'EB Garamond', 'Georgia', serif;
   --font-body:    'Inter', system-ui, sans-serif;
   --font-hand:    'Caveat', cursive;
@@ -28,41 +43,36 @@
 
 /* ── Tailwind v4 Theme Extension ───────────────────────────────────── */
 @theme {
-  /* Core palette */
-  --color-cream:       #efe9dd;
-  --color-stone:       #f6f1e6;
-  --color-taupe:       #ede8db;
-  --color-charcoal:    #2b2823;
+  /* Core palette — tend, too */
+  --color-cream:       #f3ecd9;
+  --color-paper-soft:  #faf4e6;
+  --color-ink:         #352720;
+  --color-ink-soft:    #6b5c52;
+  --color-ink-faint:   #a8998e;
+  --color-divider:     #ddd4c4;
 
-  /* Signal / accent */
-  --color-sage:        #8ea394;
-  --color-sage-lt:     #c6d8cc;
-  --color-dust:        #c08a6e;
-  --color-dust-lt:     #e8c9b8;
-  --color-refresh:     #c08a6e;
-  --color-refresh-lt:  #e8c9b8;
+  /* Legacy aliases */
+  --color-stone:       #faf4e6;
+  --color-taupe:       #f3ecd9;
+  --color-charcoal:    #352720;
+  --color-warm-mid:    #6b5c52;
+  --color-warm-light:  #a8998e;
+  --color-glow-border: #ddd4c4;
+
+  /* Accents */
+  --color-sage:        #6e8c82;
+  --color-sage-lt:     rgba(110,140,130,0.15);
   --color-bluegrey:    #93a3b1;
-
-  /* Text ramp */
-  --color-warm-mid:    #6b665e;
-  --color-warm-light:  #a8a297;
-
-  /* Borders */
-  --color-glow-border: #cdc6b6;
+  --color-refresh:     #c08a6e;
+  --color-dust:        #c08a6e;
+  --color-dust-lt:     rgba(192,138,110,0.15);
+  --color-refresh-lt:  rgba(192,138,110,0.15);
   --color-conflict:    #c08a6e;
-
-  /* Semantic aliases (new names, same values) */
-  --color-paper-soft:  #f6f1e6;
-  --color-ink:         #2b2823;
-  --color-ink-soft:    #6b665e;
-  --color-ink-faint:   #a8a297;
-  --color-divider:     #cdc6b6;
-
-  /* New accent colors */
   --color-dusty-rose:  #c4918a;
   --color-blush:       #d4a8a0;
   --color-apricot:     #d4a478;
   --color-marigold:    #d4b870;
+  --color-plum:        #9D91B5;
 
   /* Radius scale */
   --radius-sm:   6px;
@@ -89,8 +99,8 @@
 }
 
 body {
-  background-color: var(--color-bg-base);
-  color: var(--color-text-primary);
+  background-color: var(--cream);
+  color: var(--ink);
   font-family: var(--font-body);
   font-size: 15px;
   line-height: 1.6;

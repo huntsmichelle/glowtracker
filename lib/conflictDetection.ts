@@ -119,6 +119,13 @@ export async function detectPairConflicts(
         });
       } else if (pair.default_resolution === 'auto_adjust') {
         await applyAutoAdjust(base, pair, a, b);
+      } else if ((pair.default_resolution as string) === 'replace') {
+        const skipInstanceId = (pair as unknown as { skip_target?: string }).skip_target === 'b' ? b.id : a.id;
+        await db().from('instances').update({ status: 'skipped' }).eq('id', skipInstanceId);
+        await db().from('routine_conflicts').insert({
+          ...base, status: 'resolved', resolution: 'replace', resolved_at: new Date().toISOString(),
+          skip_target: (pair as unknown as { skip_target?: string }).skip_target ?? 'b',
+        });
       }
     }
   }

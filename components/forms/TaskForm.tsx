@@ -1241,36 +1241,50 @@ export default function TaskForm({
 
   if (step === 'mode-choice') {
     return (
-      <div className="space-y-5">
+      <div className="space-y-6">
         <div>
-          <h2 className="font-display text-2xl text-charcoal mb-1">I am…</h2>
-          <p className="text-sm text-warm-mid">Choose how this ritual is scheduled.</p>
+          <h2 style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '24px', fontWeight: 400, color: '#352720' }}>
+            What are you planning?
+          </h2>
         </div>
         <div className="space-y-3">
           {[
             {
               value: 'standard' as TaskMode,
-              title: 'Starting a new ritual',
-              desc: 'Track a recurring habit going forward. Instances are scheduled one at a time, anchored to each completion.',
+              title: 'Ongoing maintenance',
+              desc: 'Track something you do repeatedly and schedule the next occurrence from completion.',
             },
             {
               value: 'countdown' as TaskMode,
-              title: 'Planning for a future event',
-              desc: 'Work backwards from a target date (e.g. a wedding). All instances are pre-generated and anchored to your event.',
+              title: 'Preparing for an event',
+              desc: 'Work backward from a specific date like a wedding, vacation, or photoshoot.',
             },
           ].map(opt => (
             <button
               key={opt.value}
               type="button"
               onClick={() => { setMode(opt.value); setStep(opt.value === 'standard' ? 'anchor-date' : 'details'); }}
-              className={`w-full text-left rounded-lg border-2 px-5 py-4 transition-colors ${
-                mode === opt.value ? 'border-charcoal bg-taupe' : 'border-glow-border hover:border-warm-light'
-              }`}
+              style={{
+                width: '100%', textAlign: 'left', borderRadius: '12px',
+                border: `2px solid ${mode === opt.value ? '#352720' : '#ddd4c4'}`,
+                padding: '18px 20px', cursor: 'pointer', display: 'block',
+                backgroundColor: mode === opt.value ? '#f3ecd9' : '#faf4e6',
+                transition: 'border-color 0.15s ease',
+              }}
             >
-              <p className="font-medium text-charcoal text-sm mb-0.5">{opt.title}</p>
-              <p className="text-xs text-warm-light">{opt.desc}</p>
+              <p style={{ fontWeight: 500, color: '#352720', fontSize: '14px', marginBottom: '4px' }}>{opt.title}</p>
+              <p style={{ fontSize: '13px', color: '#6b5c52', lineHeight: 1.4 }}>{opt.desc}</p>
             </button>
           ))}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            type="button"
+            onClick={() => { if (mode) setStep(mode === 'standard' ? 'anchor-date' : 'details'); }}
+            style={{ border: '1px solid #352720', backgroundColor: 'transparent', color: '#352720', fontSize: '13px', fontWeight: 500, borderRadius: '100px', padding: '8px 20px', cursor: 'pointer' }}
+          >
+            Continue →
+          </button>
         </div>
       </div>
     );

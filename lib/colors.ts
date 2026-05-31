@@ -1,24 +1,25 @@
-// ── GlowLoop design token palette ──────────────────────────────
+// ── tend, too design token palette ──────────────────────────────
 // Single source of truth for all colours used in the app.
+// Kept in sync with mobile lib/colors.ts
 
 export const colors = {
   // ── Base palette ────────────────────────────────────────────
-  cream:      '#efe9dd',   // page background
-  paperSoft:  '#f6f1e6',   // cards, panels
-  ink:        '#2b2823',   // primary text, dark actions
-  inkSoft:    '#6b665e',   // secondary text
-  inkFaint:   '#a8a297',   // tertiary, overlines, placeholders
-  divider:    '#cdc6b6',   // borders, hairlines
-  stone:      '#ede8df',   // subtle tint
+  cream:      '#f3ecd9',   // warm ivory canvas
+  paperSoft:  '#faf4e6',   // warm ivory surface — cards, panels
+  ink:        '#352720',   // deep espresso
+  inkSoft:    '#6b5c52',   // warm mid-brown — secondary text
+  inkFaint:   '#a8998e',   // warm light brown — tertiary, overlines
+  divider:    '#ddd4c4',   // warm divider — borders, hairlines
+  stone:      '#ede8df',   // subtle tint (kept for backwards compat)
 
-  // ── Accents (kept) ───────────────────────────────────────────
-  sage:          '#8ea394',
-  sageLt:        'rgba(142, 163, 148, 0.10)',
-  bluegrey:      '#93a3b1',
-  bluegreylLt:   'rgba(147, 163, 177, 0.10)',
-  refresh:       '#c08a6e',   // depletion / alert only
+  // ── Accents ─────────────────────────────────────────────────
+  sage:       '#6e8c82',   // soft mineral green
+  sageLt:     'rgba(110, 140, 130, 0.10)',
+  bluegrey:   '#93a3b1',
+  bluegreylLt:'rgba(147, 163, 177, 0.10)',
+  refresh:    '#c08a6e',   // depletion / alert only
 
-  // ── New accent additions ──────────────────────────────────────
+  // ── New accent additions ─────────────────────────────────────
   dustyRose:    '#c4918a',
   dustyRoseLt:  'rgba(196, 145, 138, 0.10)',
   blush:        '#d4a8a0',
@@ -27,17 +28,20 @@ export const colors = {
   apricotLt:    'rgba(212, 164, 120, 0.10)',
   marigold:     '#d4b870',
   marigoldLt:   'rgba(212, 184, 112, 0.10)',
+  plum:         '#9D91B5',   // soft muted purple — Makeup category
+  plumLt:       'rgba(157, 145, 181, 0.10)',
 
-  // ── Category dots ────────────────────────────────────────────
-  categorySkin:        '#8ea394',
-  categoryHair:        '#93a3b1',
-  categoryNails:       '#c4918a',
+  // ── Category dots (semantic aliases — kept for compat) ───────
+  categorySkin:        '#93a3b1',
+  categoryHair:        '#d4a478',
+  categoryNails:       '#c08a6e',
   categoryTreatments:  '#d4a478',
   categoryBody:        '#d4b870',
   categoryBrowsLashes: '#d4a8a0',
-  categoryHairRemoval: '#93a3b1',
-  categoryMakeup:      '#c4918a',
-  categoryDefault:     '#a8a297',
+  categoryHairRemoval: '#d4b870',
+  categoryMakeup:      '#9D91B5',
+  categoryWellness:    '#c4918a',
+  categoryDefault:     '#a8998e',
 } as const;
 
 export type ColorName = keyof typeof colors;
@@ -56,12 +60,12 @@ export function tint(hex: string, opacity: number): string {
 
 // User-selectable routine card colour swatches
 export const routinePalette: { label: string; value: string }[] = [
-  { label: 'Sage',       value: '#8ea394' },
+  { label: 'Sage',       value: '#6e8c82' },
   { label: 'Slate',      value: '#93a3b1' },
   { label: 'Dusty Rose', value: '#c4918a' },
   { label: 'Blush',      value: '#d4a8a0' },
   { label: 'Apricot',    value: '#d4a478' },
   { label: 'Marigold',   value: '#d4b870' },
   { label: 'Terracotta', value: '#c08a6e' },
-  { label: 'Charcoal',   value: '#6b665e' },
+  { label: 'Charcoal',   value: '#6b5c52' },
 ];
