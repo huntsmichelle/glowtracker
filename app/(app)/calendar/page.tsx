@@ -24,7 +24,6 @@ export default async function CalendarPage() {
       .select('id, due_date_start, due_date_end, task:tasks(name, category:categories(name))')
       .eq('user_id', user.id)
       .in('status', ['upcoming', 'due', 'snoozed'])
-      .eq('archived', false)
       .gte('due_date_start', firstDay)
       .lte('due_date_start', lastDay)
       .order('due_date_start', { ascending: true }),

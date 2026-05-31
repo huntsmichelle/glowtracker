@@ -41,7 +41,6 @@ export default async function LibraryPage() {
       .eq('user_id', user.id)
       .eq('status', 'upcoming')
       .eq('is_projected', false)
-      .eq('archived', false)
       .gte('due_date_start', todayStr)
       .lte('due_date_start', sixMonthsStr)
       .order('due_date_start', { ascending: true }),
