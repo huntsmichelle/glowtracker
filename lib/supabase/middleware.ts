@@ -28,11 +28,15 @@ export async function updateSession(request: NextRequest) {
   // Refresh the session — keeps the user logged in across refreshes
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Redirect unauthenticated users to /login (except auth routes)
+  // Redirect unauthenticated users to /login (except public routes)
   const { pathname } = request.nextUrl;
-  const isAuthRoute = pathname.startsWith('/login') || pathname.startsWith('/signup');
+  const isPublicRoute =
+    pathname.startsWith('/login') ||
+    pathname.startsWith('/signup') ||
+    pathname.startsWith('/waitlist') ||
+    pathname.startsWith('/api/waitlist');
 
-  if (!user && !isAuthRoute) {
+  if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     return NextResponse.redirect(url);
