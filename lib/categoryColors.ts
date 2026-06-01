@@ -1,3 +1,5 @@
+import { Scissors, Zap, Palette, Hand, Droplets, Eye, Heart, Sparkles } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { tint, colors } from '@/lib/colors';
 
 export const CATEGORY_COLORS: Record<string, {
@@ -30,13 +32,17 @@ export function getCategoryColor(categoryName: string) {
   return CATEGORY_COLORS[categoryName] ?? DEFAULT_CATEGORY_COLOR;
 }
 
-export const CATEGORY_ICONS: Record<string, string> = {
-  'Hair':           'Scissors',
-  'Hair Removal':   'Zap',
-  'Makeup':         'Palette',
-  'Nails':          'Hand',
-  'Skin':           'Droplets',
-  'Brows & Lashes': 'Eye',
-  'Wellness':       'Heart',
-  'Treatments':     'Sparkles',
+export const CATEGORY_ICONS: Record<string, LucideIcon> = {
+  'Hair':           Scissors,
+  'Hair Removal':   Zap,
+  'Makeup':         Palette,
+  'Nails':          Hand,
+  'Skin':           Droplets,
+  'Brows & Lashes': Eye,
+  'Wellness':       Heart,
+  'Treatments':     Sparkles,
 };
+
+export function getCategoryIcon(category: string): LucideIcon {
+  return CATEGORY_ICONS[category] ?? Sparkles;
+}

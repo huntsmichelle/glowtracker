@@ -164,17 +164,17 @@ export default function HorizonClient({ instances: initial, userId, summaryCount
 
   function SectionHeader({ label, accent }: { label: string; accent?: boolean }) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '4px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '28px', marginBottom: '8px' }}>
         <span style={{
           fontFamily: 'EB Garamond, Georgia, serif',
           fontSize: '16px',
-          fontWeight: 500,
-          color: accent ? '#6e8c82' : '#352720',
+          color: accent ? 'var(--sage)' : 'var(--ink)',
           whiteSpace: 'nowrap',
+          flexShrink: 0,
         }}>
           {label}
         </span>
-        <div style={{ flex: 1, height: '1px', backgroundColor: '#ddd4c4' }} />
+        <div style={{ flex: 1, height: '1px', backgroundColor: 'var(--divider)' }} />
       </div>
     );
   }

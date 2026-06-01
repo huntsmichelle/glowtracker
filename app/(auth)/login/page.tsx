@@ -94,6 +94,20 @@ export default function LoginPage() {
             </Link>
           </p>
         </form>
+
+        <div style={{ textAlign: 'center', marginTop: '16px' }}>
+          <Link
+            href="/onboarding"
+            style={{
+              fontFamily: 'Inter, sans-serif',
+              fontSize: '14px',
+              color: 'var(--sage)',
+              textDecoration: 'none',
+            }}
+          >
+            New here? Find out more →
+          </Link>
+        </div>
       </div>
     </div>
   );

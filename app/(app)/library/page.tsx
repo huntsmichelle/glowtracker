@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { getCategoryColor } from '@/lib/categoryColors';
+import { getCategoryColor, getCategoryIcon } from '@/lib/categoryColors';
 import { format, parseISO } from 'date-fns';
 
 export const dynamic = 'force-dynamic';
@@ -140,17 +140,6 @@ export default async function LibraryPage() {
     return format(d, 'MMM d');
   }
 
-  // Category icon SVGs (inline, no lucide dependency)
-  const CATEGORY_ICON_SVG: Record<string, string> = {
-    'Hair': 'M6 3c0 8 4 12 6 12s6-4 6-12',
-    'Skin': 'M12 2a10 10 0 0 0-7.35 16.76M12 2a10 10 0 0 1 7.35 16.76M12 22v-4',
-    'Nails': 'M8 10V6a4 4 0 0 1 8 0v4M4 10h16v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z',
-    'Makeup': 'M12 2L8 12h8l-4 10M8 12l-4 2M16 12l4 2',
-    'Hair Removal': 'M6 3h12M6 8h12M6 13l6 8 6-8',
-    'Brows & Lashes': 'M2 12c2-4 5-6 10-6s8 2 10 6M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
-    'Wellness': 'M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z',
-    'Treatments': 'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z',
-  };
 
   return (
     <div className="max-w-5xl mx-auto px-5 py-8 space-y-10">
@@ -247,36 +236,38 @@ export default async function LibraryPage() {
           <p className="label-overline mb-4">Browse by category</p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '10px' }}>
             {activeCategories.map(cat => {
-              const color = getCategoryColor(cat.name);
-              const iconPath = CATEGORY_ICON_SVG[cat.name];
+              const catColor = getCategoryColor(cat.name);
+              const Icon = getCategoryIcon(cat.name);
               return (
                 <Link
                   key={cat.id}
                   href={`/tasks?category=${cat.id}`}
                   style={{
-                    display: 'block', textDecoration: 'none',
-                    backgroundColor: '#faf4e6', border: '1px solid #ddd4c4',
-                    borderTop: `3px solid ${color.dot}`,
-                    borderRadius: '10px', padding: '14px',
+                    backgroundColor: 'var(--paper-soft)',
+                    borderRadius: '12px',
+                    border: '1px solid var(--divider)',
+                    borderTop: `3px solid ${catColor.dot}`,
+                    padding: '14px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '6px',
+                    textDecoration: 'none',
+                    cursor: 'pointer',
+                    transition: 'transform 0.15s ease, box-shadow 0.15s ease',
                   }}
                 >
-                  {/* Category icon */}
-                  {iconPath && (
-                    <svg
-                      width="20" height="20"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke={color.dot}
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      style={{ marginBottom: '8px', display: 'block' }}
-                    >
-                      <path d={iconPath} />
-                    </svg>
-                  )}
-                  <p style={{ fontSize: '15px', fontWeight: 500, color: '#352720', marginBottom: '3px' }}>{cat.name}</p>
-                  <p style={{ fontSize: '11px', color: '#a8998e' }}>{cat.count} ritual{cat.count !== 1 ? 's' : ''}</p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <Icon size={20} color={catColor.dot} strokeWidth={1.5} />
+                    <span style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '22px', color: 'var(--ink-faint)' }}>
+                      {cat.count}
+                    </span>
+                  </div>
+                  <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '15px', fontWeight: 500, color: 'var(--ink)' }}>
+                    {cat.name}
+                  </span>
+                  <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: 'var(--ink-faint)' }}>
+                    {cat.count} {cat.count === 1 ? 'ritual' : 'rituals'}
+                  </span>
                 </Link>
               );
             })}
@@ -284,18 +275,20 @@ export default async function LibraryPage() {
         </section>
       )}
 
-      {/* ── Section 3: ALL RITUALS ──────────────────────────────────────── */}
+      {/* ── Section 3: ALL RITUALS (link only — no rows) ──────────────────── */}
       <section>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #ddd4c4', paddingBottom: '12px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
           <div>
-            <p className="label-overline">All rituals</p>
-            <h2 style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '20px', fontWeight: 400, color: '#352720', marginTop: '2px', lineHeight: 1.2 }}>
+            <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '10px', letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '4px' }}>
+              ALL RITUALS
+            </p>
+            <h2 style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '22px', fontWeight: 400, color: 'var(--ink)', lineHeight: 1.2 }}>
               Individual Rituals
             </h2>
           </div>
           <Link
             href="/tasks"
-            style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#a8998e', textDecoration: 'none' }}
+            style={{ fontFamily: 'Inter, sans-serif', fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ink-faint)', textDecoration: 'none' }}
           >
             SEE ALL →
           </Link>

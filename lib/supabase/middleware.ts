@@ -34,7 +34,8 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith('/login') ||
     pathname.startsWith('/signup') ||
     pathname.startsWith('/waitlist') ||
-    pathname.startsWith('/api/waitlist');
+    pathname.startsWith('/api/waitlist') ||
+    pathname.startsWith('/onboarding');
 
   if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();
