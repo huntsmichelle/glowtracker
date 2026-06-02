@@ -1,10 +1,24 @@
+import { Scissors, Zap, Hand, Droplets, Eye, Heart, Sparkles } from 'lucide-react';
+import { getCategoryColor } from '@/lib/categoryColors';
+
+const MAINTAIN_CATEGORIES = [
+  { label: 'Hair',           Icon: Scissors, path: 'hair' },
+  { label: 'Skin',           Icon: Droplets, path: 'skin' },
+  { label: 'Nails',          Icon: Hand,     path: 'nails' },
+  { label: 'Brows & Lashes', Icon: Eye,      path: 'brows' },
+  { label: 'Hair Removal',   Icon: Zap,      path: 'removal' },
+  { label: 'Wellness',       Icon: Heart,    path: 'wellness' },
+] as const;
+
+const PREPARE_CATEGORIES = [
+  { label: 'Wedding',  path: 'wedding' },
+  { label: 'Vacation', path: 'vacation' },
+  { label: 'Seasonal', path: 'seasonal' },
+] as const;
+
 export default function AddPage() {
   return (
-    <main style={{
-      maxWidth: '560px',
-      margin: '0 auto',
-      padding: '40px 24px',
-    }}>
+    <main style={{ maxWidth: '560px', margin: '0 auto', padding: '40px 24px' }}>
       <h1 style={{
         fontFamily: 'EB Garamond, Georgia, serif',
         fontSize: '32px',
@@ -21,34 +35,33 @@ export default function AddPage() {
           MAINTAIN SOMETHING
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
-          {[
-            { label: 'Hair',           emoji: '✂️', path: 'hair' },
-            { label: 'Skin',           emoji: '💧', path: 'skin' },
-            { label: 'Nails',          emoji: '💅', path: 'nails' },
-            { label: 'Brows & Lashes', emoji: '👁',  path: 'brows' },
-            { label: 'Hair Removal',   emoji: '⚡', path: 'removal' },
-            { label: 'Wellness',       emoji: '🤍', path: 'wellness' },
-          ].map(cat => (
-            <a
-              key={cat.label}
-              href={`/add/maintain/${cat.path}`}
-              style={{
-                backgroundColor: 'var(--paper-soft)',
-                borderRadius: '12px',
-                border: '1px solid var(--divider)',
-                padding: '16px 12px',
-                textAlign: 'center',
-                textDecoration: 'none',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: '8px',
-              }}
-            >
-              <span style={{ fontSize: '24px' }}>{cat.emoji}</span>
-              <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', color: 'var(--ink)' }}>{cat.label}</span>
-            </a>
-          ))}
+          {MAINTAIN_CATEGORIES.map(({ label, Icon, path }) => {
+            const catColor = getCategoryColor(label);
+            return (
+              <a
+                key={label}
+                href={`/add/maintain/${path}`}
+                style={{
+                  backgroundColor: 'var(--paper-soft)',
+                  borderRadius: '12px',
+                  border: '1px solid var(--divider)',
+                  borderTop: `3px solid ${catColor.dot}`,
+                  padding: '14px 12px',
+                  textAlign: 'center',
+                  textDecoration: 'none',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
+              >
+                <Icon size={20} color={catColor.dot} strokeWidth={1.5} />
+                <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', color: 'var(--ink)' }}>
+                  {label}
+                </span>
+              </a>
+            );
+          })}
         </div>
       </section>
 
@@ -58,19 +71,16 @@ export default function AddPage() {
           PREPARE FOR SOMETHING
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
-          {[
-            { label: 'Wedding',  emoji: '💍', path: 'wedding' },
-            { label: 'Vacation', emoji: '✈️', path: 'vacation' },
-            { label: 'Seasonal', emoji: '🌿', path: 'seasonal' },
-          ].map(cat => (
+          {PREPARE_CATEGORIES.map(({ label, path }) => (
             <a
-              key={cat.label}
-              href={`/add/prepare/${cat.path}`}
+              key={label}
+              href={`/add/prepare/${path}`}
               style={{
                 backgroundColor: 'var(--paper-soft)',
                 borderRadius: '12px',
                 border: '1px solid var(--divider)',
-                padding: '16px 12px',
+                borderTop: '3px solid var(--sage)',
+                padding: '14px 12px',
                 textAlign: 'center',
                 textDecoration: 'none',
                 display: 'flex',
@@ -79,8 +89,10 @@ export default function AddPage() {
                 gap: '8px',
               }}
             >
-              <span style={{ fontSize: '24px' }}>{cat.emoji}</span>
-              <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', color: 'var(--ink)' }}>{cat.label}</span>
+              <Sparkles size={20} color="var(--sage)" strokeWidth={1.5} />
+              <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', color: 'var(--ink)' }}>
+                {label}
+              </span>
             </a>
           ))}
         </div>
