@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { Package } from 'lucide-react';
 
 const navLinks = [
   {
@@ -44,16 +45,45 @@ const navLinks = [
       </svg>
     ),
   },
-  {
-    href: '/shelf',
-    label: 'Shelf',
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="2" y="3" width="20" height="4" rx="1" /><rect x="2" y="10" width="20" height="4" rx="1" /><rect x="2" y="17" width="20" height="4" rx="1" />
-      </svg>
-    ),
-  },
 ];
+
+// Shelf is shown but non-functional — coming soon
+function ShelfDisabled({ mobile }: { mobile?: boolean }) {
+  if (mobile) {
+    return (
+      <div style={{
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '4px',
+        height: '100%',
+        opacity: 0.35,
+        cursor: 'default',
+        pointerEvents: 'none',
+      }}>
+        <Package size={16} strokeWidth={1.5} color="var(--ink-faint)" />
+        <span style={{ fontSize: '10px', fontWeight: 500, letterSpacing: '0.05em', color: 'var(--ink-faint)' }}>Shelf</span>
+      </div>
+    );
+  }
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: '10px',
+      padding: '7px 12px',
+      borderRadius: '6px',
+      opacity: 0.35,
+      cursor: 'default',
+      pointerEvents: 'none',
+    }}>
+      <Package size={16} strokeWidth={1.5} color="var(--ink-faint)" />
+      <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '14px', color: 'var(--ink-faint)' }}>Shelf</span>
+    </div>
+  );
+}
 
 export default function NavBar() {
   const pathname = usePathname();
@@ -108,6 +138,7 @@ export default function NavBar() {
                 </Link>
               );
             })}
+            <ShelfDisabled />
           </div>
         </div>
 
@@ -136,6 +167,7 @@ export default function NavBar() {
             <span className="text-[10px] font-medium tracking-wide">{link.label}</span>
           </Link>
         ))}
+        <ShelfDisabled mobile />
         <button
           onClick={handleSignOut}
           className="flex-1 flex flex-col items-center justify-center gap-1 h-full text-warm-light hover:text-charcoal"

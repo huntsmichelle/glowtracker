@@ -41,13 +41,36 @@ export default async function HorizonPage() {
   const catSet = new Set(instancesIn30.map(i => i.task?.category?.id).filter(Boolean));
 
   return (
-    <div className="max-w-2xl mx-auto px-5 py-8">
-      <HorizonClient
-        instances={allInstances}
-        userId={user.id}
-        summaryCount={instancesIn30.length}
-        summaryCategoryCount={catSet.size}
-      />
-    </div>
+    <>
+      <div className="max-w-2xl mx-auto px-5 py-8">
+        <HorizonClient
+          instances={allInstances}
+          userId={user.id}
+          summaryCount={instancesIn30.length}
+          summaryCategoryCount={catSet.size}
+        />
+      </div>
+      <a
+        href="/add"
+        style={{
+          position: 'fixed',
+          bottom: '32px',
+          right: '32px',
+          backgroundColor: 'var(--ink)',
+          color: 'var(--cream)',
+          fontFamily: 'Inter, sans-serif',
+          fontSize: '15px',
+          fontWeight: 500,
+          padding: '14px 24px',
+          borderRadius: '100px',
+          textDecoration: 'none',
+          boxShadow: '0 4px 20px rgba(53,39,32,0.15)',
+          zIndex: 40,
+          letterSpacing: '0.01em',
+        }}
+      >
+        + New
+      </a>
+    </>
   );
 }
