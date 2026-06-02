@@ -18,6 +18,7 @@ export async function autoCompleteInstances(supabase: SupabaseClient): Promise<v
       task:tasks!inner(autocomplete_enabled, frequency_type, scheduled_time)
     `)
     .eq('status', 'upcoming')
+    .eq('is_projected', false)
     .eq('auto_completed', false)
     .lte('due_date_start', todayStr);
 

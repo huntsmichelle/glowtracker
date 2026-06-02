@@ -13,6 +13,22 @@ const CADENCE_OPTIONS = [
   { label: 'Custom',        days: 0 },
 ];
 
+// Human-readable cadence derived from a task's interval window (no
+// recommended_cadence_label column exists on common_tasks).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function cadenceLabel(task: any): string | null {
+  const min = task.interval_min_days;
+  const max = task.interval_max_days;
+  if (!min && !max) return null;
+  const mid = Math.round(((min ?? max) + (max ?? min)) / 2);
+  if (mid <= 1)  return 'Daily';
+  if (mid <= 10) return 'Weekly';
+  if (mid <= 20) return 'Every 2 weeks';
+  if (mid <= 38) return 'Monthly';
+  if (mid <= 70) return `Every ${Math.round(mid / 7)} weeks`;
+  return `Every ${Math.round(mid / 30)} months`;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function RitualLibraryClient({ tasks }: { tasks: any[] }) {
   const router = useRouter();
@@ -30,6 +46,18 @@ export function RitualLibraryClient({ tasks }: { tasks: any[] }) {
         (t.category ?? '').toLowerCase().includes(query.toLowerCase())
       )
     : tasks;
+
+  // Category sections shown when there's no active search.
+  const groupedByCategory = (() => {
+    const map = new Map<string, typeof tasks>();
+    for (const t of tasks) {
+      const cat = t.category ?? 'Other';
+      const arr = map.get(cat) ?? [];
+      arr.push(t);
+      map.set(cat, arr);
+    }
+    return [...map.entries()].map(([category, items]) => ({ category, items }));
+  })();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function handleSelectTask(task: any) {
@@ -238,37 +266,59 @@ export function RitualLibraryClient({ tasks }: { tasks: any[] }) {
         </p>
       )}
 
-      <div>
-        {filtered.map((task, i) => (
-          <div key={task.id}>
-            {i > 0 && <div style={{ height: '1px', backgroundColor: 'var(--divider)' }} />}
-            <button
-              onClick={() => handleSelectTask(task)}
-              style={{
-                width: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '14px 4px',
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                textAlign: 'left',
-              }}
-            >
-              <div style={{ flex: 1 }}>
-                <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '15px', fontWeight: 500, color: 'var(--ink)', margin: 0 }}>
-                  {task.name}
-                </p>
-                <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: 'var(--ink-soft)', margin: '3px 0 0' }}>
-                  {task.category}{task.recommended_cadence_label ? ` · ${task.recommended_cadence_label}` : ''}
-                </p>
-              </div>
-              <span style={{ fontSize: '18px', color: 'var(--ink-faint)', flexShrink: 0 }}>›</span>
-            </button>
-          </div>
-        ))}
-      </div>
+      {/* No search → grouped category sections. Searching → flat result list. */}
+      {query.trim() ? (
+        <div>
+          {filtered.map((task, i) => (
+            <RitualRow key={task.id} task={task} showDivider={i > 0} onSelect={handleSelectTask} />
+          ))}
+        </div>
+      ) : (
+        groupedByCategory.map(({ category, items }) => (
+          <section key={category} style={{ marginBottom: '24px' }}>
+            <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '10px', letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '4px' }}>
+              {category}
+            </p>
+            {items.map((task, i) => (
+              <RitualRow key={task.id} task={task} showDivider={i > 0} onSelect={handleSelectTask} />
+            ))}
+          </section>
+        ))
+      )}
     </main>
+  );
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function RitualRow({ task, showDivider, onSelect }: { task: any; showDivider: boolean; onSelect: (t: any) => void }) {
+  const cadence = cadenceLabel(task);
+  return (
+    <div>
+      {showDivider && <div style={{ height: '1px', backgroundColor: 'var(--divider)' }} />}
+      <button
+        onClick={() => onSelect(task)}
+        style={{
+          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          padding: '14px 4px',
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          textAlign: 'left',
+        }}
+      >
+        <div style={{ flex: 1 }}>
+          <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '15px', fontWeight: 500, color: 'var(--ink)', margin: 0 }}>
+            {task.name}
+          </p>
+          <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: 'var(--ink-soft)', margin: '3px 0 0' }}>
+            {task.category}{cadence ? ` · ${cadence}` : ''}
+          </p>
+        </div>
+        <span style={{ fontSize: '18px', color: 'var(--ink-faint)', flexShrink: 0 }}>›</span>
+      </button>
+    </div>
   );
 }
