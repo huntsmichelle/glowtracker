@@ -1,0 +1,529 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>tend, too — Because you're also on the list.</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@1,700&family=EB+Garamond:ital,wght@0,400;0,500;0,700;1,400;1,500&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    /* ── Brand tokens ───────────────────────────────── */
+    :root {
+      --ink:     #2b2823;
+      --paper:   #f6f1e6;
+      --cream:   #efe9dd;
+      --sage:    #8ea394;
+      --green:   #4d7a61;
+      --green-d: #3c6150;
+      --mid:     #6b665e;
+      --muted:   #a8a297;
+      --border:  #d5cebb;
+      --light:   #f4efe3;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { background: var(--cream); color: var(--ink); }
+    body { font-family: 'EB Garamond', serif; -webkit-font-smoothing: antialiased; }
+
+    /* ── Wordmark ───────────────────────────────────── */
+    .tt-wordmark {
+      font-family: 'EB Garamond', serif;
+      font-weight: 500;
+      line-height: 1;
+      letter-spacing: -0.025em;
+      color: var(--ink);
+      display: inline-flex;
+      align-items: baseline;
+      white-space: nowrap;
+      user-select: none;
+    }
+    .tt-comma {
+      font-family: 'EB Garamond', serif;
+      color: var(--sage);
+      font-weight: 500;
+      font-style: normal;
+      line-height: 0;
+      font-size: 1.45em;
+      position: relative;
+      top: -0.02em;
+      margin-left: -0.06em;
+    }
+    .tt-too { font-style: italic; margin-left: 0.04em; }
+
+    /* ── Nav ────────────────────────────────────────── */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--cream);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 22px 52px;
+      border-bottom: 1px solid transparent;
+      transition: border-color 0.4s ease;
+    }
+    nav.scrolled { border-bottom-color: var(--border); }
+    .nav-wordmark { font-size: 22px; }
+    .nav-btn {
+      height: 38px;
+      border-radius: 19px;
+      background: var(--green);
+      color: var(--light);
+      border: none;
+      cursor: pointer;
+      font-family: 'Inter', sans-serif;
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: 0.055em;
+      padding: 0 22px;
+      transition: background 0.15s ease;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+    }
+    .nav-btn:hover { background: var(--green-d); }
+
+    /* ── Hero ───────────────────────────────────────── */
+    .hero {
+      min-height: 88vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 80px 52px 100px;
+    }
+    .hero-kicker {
+      font-family: 'Inter', sans-serif;
+      font-size: 10px;
+      letter-spacing: 0.24em;
+      text-transform: uppercase;
+      color: var(--sage);
+      margin-bottom: 36px;
+    }
+    .hero-wordmark { font-size: clamp(72px, 10vw, 132px); }
+    .hero-tagline {
+      font-size: clamp(19px, 2.2vw, 27px);
+      font-style: italic;
+      font-weight: 400;
+      color: var(--mid);
+      margin-top: 14px;
+      letter-spacing: -0.01em;
+    }
+    .hero-rule {
+      width: 44px;
+      height: 1px;
+      background: var(--border);
+      margin: 40px auto;
+    }
+    .hero-desc {
+      font-size: clamp(20px, 1.9vw, 26px);
+      font-weight: 400;
+      line-height: 1.45;
+      color: var(--ink);
+      max-width: 560px;
+      margin-bottom: 48px;
+      text-wrap: pretty;
+      letter-spacing: -0.01em;
+    }
+    .hero-desc em { font-style: italic; color: var(--mid); }
+    .hero-launch {
+      display: inline-flex;
+      align-items: center;
+      height: 52px;
+      border-radius: 26px;
+      background: var(--ink);
+      color: var(--light);
+      border: none;
+      cursor: pointer;
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.055em;
+      padding: 0 34px;
+      text-decoration: none;
+      transition: background 0.15s ease;
+    }
+    .hero-launch:hover { background: #3d3830; }
+    .hero-fine {
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.04em;
+      margin-top: 18px;
+    }
+
+    /* ── Strip ──────────────────────────────────────── */
+    .strip {
+      background: var(--ink);
+      padding: 15px 0;
+      overflow: hidden;
+    }
+    .strip-track {
+      display: flex;
+      align-items: center;
+      animation: marquee 48s linear infinite;
+      width: max-content;
+    }
+    .strip-item {
+      font-family: 'EB Garamond', serif;
+      font-size: 16px;
+      font-style: italic;
+      color: rgba(244,239,227,.55);
+      padding: 0 22px;
+      flex-shrink: 0;
+    }
+    .strip-sep {
+      font-family: 'Cormorant Garamond', serif;
+      color: var(--sage);
+      font-weight: 700;
+      font-style: italic;
+      font-size: 28px;
+      line-height: 1;
+      flex-shrink: 0;
+      position: relative;
+      top: 2px;
+    }
+    @keyframes marquee {
+      from { transform: translateX(0); }
+      to   { transform: translateX(-50%); }
+    }
+
+    /* ── Quote ──────────────────────────────────────── */
+    .quote-section {
+      padding: 130px 52px 140px;
+      text-align: center;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    .quote-text {
+      font-size: clamp(40px, 5.8vw, 78px);
+      font-weight: 500;
+      line-height: 1.1;
+      color: var(--ink);
+      letter-spacing: -0.028em;
+      text-wrap: pretty;
+    }
+    .quote-em {
+      font-style: italic;
+      color: var(--sage);
+    }
+
+    /* ── How it works ───────────────────────────────── */
+    .how {
+      padding: 96px 52px 112px;
+      max-width: 1240px;
+      margin: 0 auto;
+    }
+    .section-label {
+      font-family: 'Inter', sans-serif;
+      font-size: 10px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 52px;
+    }
+    .how-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+    }
+    .how-card {
+      background: var(--cream);
+      padding: 48px 44px 52px;
+    }
+    .how-num {
+      font-family: 'EB Garamond', serif;
+      font-size: 13px;
+      color: var(--sage);
+      letter-spacing: 0.07em;
+      margin-bottom: 28px;
+    }
+    .how-title {
+      font-size: clamp(24px, 2vw, 30px);
+      font-weight: 500;
+      line-height: 1.1;
+      color: var(--ink);
+      margin-bottom: 16px;
+      letter-spacing: -0.015em;
+    }
+    .how-body {
+      font-size: 18px;
+      font-style: italic;
+      line-height: 1.6;
+      color: var(--mid);
+    }
+
+    /* ── Event section ──────────────────────────────── */
+    .event-section {
+      border-top: 1px solid var(--border);
+      padding: 100px 52px 112px;
+    }
+    .event-inner {
+      max-width: 1240px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 80px;
+      align-items: center;
+    }
+    .event-label {
+      font-family: 'Inter', sans-serif;
+      font-size: 10px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 24px;
+    }
+    .event-headline {
+      font-size: clamp(32px, 3.5vw, 52px);
+      font-weight: 500;
+      line-height: 1.08;
+      color: var(--ink);
+      letter-spacing: -0.02em;
+      text-wrap: pretty;
+    }
+    .event-headline em {
+      font-style: italic;
+      color: var(--mid);
+    }
+    .event-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    .event-pill {
+      font-family: 'EB Garamond', serif;
+      font-size: 20px;
+      font-weight: 500;
+      font-style: italic;
+      color: var(--ink);
+      border: 1.5px solid var(--ink);
+      border-radius: 100px;
+      padding: 10px 24px 9px;
+      letter-spacing: -0.01em;
+      white-space: nowrap;
+    }
+
+    /* ── Dark CTA ───────────────────────────────────── */
+    .cta {
+      background: var(--ink);
+      padding: 130px 52px 140px;
+      text-align: center;
+    }
+    .cta-headline {
+      font-size: clamp(40px, 5.8vw, 78px);
+      font-weight: 500;
+      line-height: 1.08;
+      color: var(--light);
+      letter-spacing: -0.028em;
+      margin-bottom: 20px;
+      text-wrap: pretty;
+    }
+    .cta-headline em {
+      font-style: italic;
+      color: rgba(244,239,227,.42);
+    }
+    .cta-sub {
+      font-size: clamp(18px, 1.7vw, 22px);
+      font-style: italic;
+      color: rgba(244,239,227,.45);
+      margin-bottom: 52px;
+      line-height: 1.5;
+    }
+    .cta-launch {
+      display: inline-flex;
+      align-items: center;
+      height: 54px;
+      border-radius: 27px;
+      background: var(--green);
+      color: var(--light);
+      border: none;
+      cursor: pointer;
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.055em;
+      padding: 0 36px;
+      text-decoration: none;
+      transition: background 0.15s ease;
+    }
+    .cta-launch:hover { background: var(--green-d); }
+
+    /* ── Footer ─────────────────────────────────────── */
+    footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 28px 52px;
+      border-top: 1px solid var(--border);
+    }
+    .footer-wordmark { font-size: 18px; }
+    .footer-note {
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.05em;
+    }
+
+    /* ── Reveal ─────────────────────────────────────── */
+    .reveal {
+      opacity: 0;
+      transform: translateY(22px);
+      transition: opacity 0.85s ease, transform 0.85s ease;
+    }
+    .reveal.in { opacity: 1; transform: none; }
+    .reveal-d1 { transition-delay: 0.08s; }
+    .reveal-d2 { transition-delay: 0.16s; }
+
+    /* ── Responsive ─────────────────────────────────── */
+    @media (max-width: 900px) {
+      .event-inner { grid-template-columns: 1fr; gap: 40px; }
+    }
+    @media (max-width: 760px) {
+      nav   { padding: 18px 24px; }
+      .hero { padding: 64px 24px 80px; min-height: auto; }
+      .quote-section { padding: 80px 24px 88px; }
+      .how  { padding: 72px 24px 88px; }
+      .how-grid { grid-template-columns: 1fr; }
+      .event-section { padding: 72px 24px 88px; }
+      .cta  { padding: 80px 24px 96px; }
+      footer { padding: 24px; flex-direction: column; gap: 10px; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Nav ──────────────────────────────────────────── -->
+<nav id="main-nav">
+  <span class="tt-wordmark nav-wordmark">tend<span class="tt-comma">,</span><span class="tt-too">too</span></span>
+  <a class="nav-btn" href="Onboarding Screen 1.html">Get started</a>
+</nav>
+
+<!-- ── Hero ─────────────────────────────────────────── -->
+<section class="hero">
+  <div class="hero-kicker">Coming soon</div>
+  <span class="tt-wordmark hero-wordmark">tend<span class="tt-comma">,</span><span class="tt-too">too</span></span>
+  <p class="hero-tagline">Because you're also on the list.</p>
+  <div class="hero-rule"></div>
+  <p class="hero-desc">Life has maintenance requirements.<br><em>You deserve to be included in them.</em></p>
+  <a class="hero-launch" href="Onboarding Screen 1.html">Get early access</a>
+  <p class="hero-fine">Takes two minutes. No commitment.</p>
+</section>
+
+<!-- ── Strip ─────────────────────────────────────────── -->
+<div class="strip" aria-hidden="true">
+  <div class="strip-track">
+    <span class="strip-item">hair color</span><span class="strip-sep">,</span>
+    <span class="strip-item">facials</span><span class="strip-sep">,</span>
+    <span class="strip-item">nails</span><span class="strip-sep">,</span>
+    <span class="strip-item">waxing</span><span class="strip-sep">,</span>
+    <span class="strip-item">vacation prep</span><span class="strip-sep">,</span>
+    <span class="strip-item">skincare</span><span class="strip-sep">,</span>
+    <span class="strip-item">event prep</span><span class="strip-sep">,</span>
+    <span class="strip-item">wellness</span><span class="strip-sep">,</span>
+    <span class="strip-item">lashes</span><span class="strip-sep">,</span>
+    <span class="strip-item">makeup</span><span class="strip-sep">,</span>
+    <span class="strip-item">touch-ups</span><span class="strip-sep">,</span>
+    <span class="strip-item">hair color</span><span class="strip-sep">,</span>
+    <span class="strip-item">facials</span><span class="strip-sep">,</span>
+    <span class="strip-item">nails</span><span class="strip-sep">,</span>
+    <span class="strip-item">waxing</span><span class="strip-sep">,</span>
+    <span class="strip-item">vacation prep</span><span class="strip-sep">,</span>
+    <span class="strip-item">skincare</span><span class="strip-sep">,</span>
+    <span class="strip-item">event prep</span><span class="strip-sep">,</span>
+    <span class="strip-item">wellness</span><span class="strip-sep">,</span>
+    <span class="strip-item">lashes</span><span class="strip-sep">,</span>
+    <span class="strip-item">makeup</span><span class="strip-sep">,</span>
+    <span class="strip-item">touch-ups</span><span class="strip-sep">,</span>
+  </div>
+</div>
+
+<!-- ── Quote ─────────────────────────────────────────── -->
+<section class="quote-section">
+  <div class="quote-text reveal">
+    The dates live in<br>your head.<br><span class="quote-em">Until they don't.</span>
+  </div>
+</section>
+
+<!-- ── How it works ──────────────────────────────────── -->
+<section class="how">
+  <div class="section-label">How it works</div>
+  <div class="how-grid">
+    <div class="how-card reveal">
+      <div class="how-num">01</div>
+      <div class="how-title">Tell us what<br>you maintain</div>
+      <div class="how-body">Hair, skin, nails, wellness and everything in between.</div>
+    </div>
+    <div class="how-card reveal reveal-d1">
+      <div class="how-num">02</div>
+      <div class="how-title">Log when<br>you last did it</div>
+      <div class="how-body">Or let it slide. We'll ask when we need to know.</div>
+    </div>
+    <div class="how-card reveal reveal-d2">
+      <div class="how-num">03</div>
+      <div class="how-title">We keep<br>it on track</div>
+      <div class="how-body">Plans change. Appointments move. Life happens. tend, too adjusts with you.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Planning for something? ───────────────────────── -->
+<section class="event-section">
+  <div class="event-inner">
+    <div class="reveal">
+      <div class="event-label">Planning for something?</div>
+      <h2 class="event-headline">We'll build the timeline<br>backwards from<br><em>your date.</em></h2>
+    </div>
+    <div class="event-pills reveal reveal-d1">
+      <span class="event-pill">Wedding</span>
+      <span class="event-pill">Vacation</span>
+      <span class="event-pill">Photoshoot</span>
+      <span class="event-pill">Holiday</span>
+      <span class="event-pill">Cruise</span>
+    </div>
+  </div>
+</section>
+
+<!-- ── CTA ───────────────────────────────────────────── -->
+<section class="cta" id="waitlist">
+  <div class="cta-headline reveal">
+    You have enough<br>to remember.<br><em>Let us carry this part.</em>
+  </div>
+  <p class="cta-sub reveal reveal-d1">tend, too is coming. Be one of the first.</p>
+  <a class="cta-launch reveal reveal-d2" href="Onboarding Screen 1.html">Get started</a>
+</section>
+
+<!-- ── Footer ────────────────────────────────────────── -->
+<footer>
+  <span class="tt-wordmark footer-wordmark">tend<span class="tt-comma">,</span><span class="tt-too">too</span></span>
+  <span class="footer-note">© 2026 tend, too</span>
+</footer>
+
+<script>
+  // Nav scroll border
+  var nav = document.getElementById('main-nav');
+  window.addEventListener('scroll', function () {
+    nav.classList.toggle('scrolled', window.pageYOffset > 8);
+  }, { passive: true });
+
+  // Scroll reveal
+  var reveals = document.querySelectorAll('.reveal');
+  var observer = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('in');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.12 });
+  reveals.forEach(function (el) { observer.observe(el); });
+</script>
+
+</body>
+</html>

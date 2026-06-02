@@ -11,7 +11,7 @@ export default async function DashboardPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user) redirect('/login');
+  if (!user) redirect('/home');
 
   // Run autocomplete and retire stale overdues before fetching
   await Promise.all([
