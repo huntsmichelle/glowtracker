@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>tend, too — Onboarding Preview</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; background: #16140f; display: flex; align-items: center; justify-content: center; -webkit-font-smoothing: antialiased; }
+    #root { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+<script type="text/babel" src="animations.jsx"></script>
+<script type="text/babel">
+
+/* ── Helpers ── */
+const eOut = p => 1 - Math.pow(1 - Math.max(0, Math.min(1, p)), 3);
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+function tw(t, t0, t1, v0, v1, ease = eOut) {
+  return v0 + (v1 - v0) * ease(clamp((t - t0) / Math.max(t1 - t0, 0.001), 0, 1));
+}
+function scOp(t, i0, i1, o0, o1) {
+  if (t < i0 || t > o1) return 0;
+  if (t < i1) return tw(t, i0, i1, 0, 1);
+  if (t < o0) return 1;
+  return tw(t, o0, o1, 1, 0);
+}
+
+/* ── Screen timing map ──────────────────────────────
+   S1  "You have enough to remember"   0 – 12.5s
+   S2  "Life has maintenance req."    (within S1, final reveal from ~8.1s)
+   S3  "Because you're also on list" 11.6 – 15.2s  (half duration)
+   S4  "What brings you here?"       14.9 – 19.8s  (back to prior pace)
+   S5  "What do you maintain?"       19.1 – 24.5s
+   S6  "Recommended starting points" 23.8 – 31.5s
+   S7  "You're all set"              30.8 – 37.0s
+────────────────────────────────────────────── */
+
+/* ── "Life has maintenance requirements" reveal timing ── */
+const SHOW_FINAL = 8.1;   // p3 dissolves at 7.9, gap 0.2
+const FINAL_WRAP = SHOW_FINAL + 0.58;  // 8.68
+
+/* ── Atoms ── */
+function Wordmark({ size = 19 }) {
+  return (
+    <div style={{ fontFamily: 'EB Garamond,serif', fontSize: size, fontWeight: 500, color: '#2b2823', letterSpacing: '-0.02em', lineHeight: 1, display: 'inline-flex', alignItems: 'baseline' }}>
+      tend
+      <span style={{ color: '#8ea394', fontWeight: 500, fontSize: '1.35em', lineHeight: 0, position: 'relative', top: '-0.02em', marginLeft: '-0.06em' }}>,</span>
+      <span style={{ fontStyle: 'italic', marginLeft: '0.04em' }}>too</span>
+    </div>
+  );
+}
+
+function StatusBar() {
+  return (
+    <div style={{ position: 'absolute', top: 14, left: 0, right: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 32px 0 38px', zIndex: 10 }}>
+      <span style={{ fontFamily: 'Inter,sans-serif', fontSize: 14, fontWeight: 600, color: '#2b2823' }}>9:41</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <svg width="17" height="12" viewBox="0 0 17 12" fill="none">
+          <rect x="0" y="8" width="3" height="4" rx="0.5" fill="#2b2823"/>
+          <rect x="4.5" y="5" width="3" height="7" rx="0.5" fill="#2b2823"/>
+          <rect x="9" y="2" width="3" height="10" rx="0.5" fill="#2b2823"/>
+          <rect x="13.5" y="0" width="3" height="12" rx="0.5" fill="#2b2823" opacity="0.25"/>
+        </svg>
+        <svg width="25" height="12" viewBox="0 0 25 12" fill="none">
+          <rect x="0.5" y="0.5" width="21" height="11" rx="2.5" stroke="#2b2823" strokeWidth="1" fill="none"/>
+          <rect x="1.5" y="1.5" width="16" height="9" rx="1.5" fill="#2b2823"/>
+          <path d="M23 4v4a2 2 0 0 0 0-4z" fill="#2b2823" opacity="0.4"/>
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+function GreenBtn({ label }) {
+  return (
+    <div style={{ height: 44, borderRadius: 22, background: '#4d7a61', color: '#f4efe3', display: 'inline-flex', alignItems: 'center', fontFamily: 'Inter,sans-serif', fontSize: 13, fontWeight: 500, letterSpacing: '0.04em', padding: '0 24px' }}>{label}</div>
+  );
+}
+
+function TapRipple({ t, at, cx, cy }) {
+  const p = clamp((t - at) / 0.5, 0, 1);
+  if (p <= 0 || p >= 1) return null;
+  return <div style={{ position: 'absolute', left: cx - 26, top: cy - 26, width: 52, height: 52, borderRadius: '50%', background: 'rgba(43,40,35,0.15)', transform: `scale(${tw(p, 0, 1, 0.1, 2.2)})`, opacity: tw(p, 0, 1, 0.45, 0), pointerEvents: 'none' }}/>;
+}
+
+function CheckRow({ label, t, checkedAt = 999 }) {
+  const checked = t >= checkedAt + 0.05;
+  const pp = clamp((t - (checkedAt + 0.05)) / 0.22, 0, 1);
+  const pop = pp < 0.5 ? 1 + pp * 0.28 : 1.14 - (pp - 0.5) * 0.28;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '13px 0', borderBottom: '1px solid #d5cebb' }}>
+      <div style={{ width: 20, height: 20, flexShrink: 0, border: '1.5px solid #2b2823', borderRadius: 4, background: checked ? '#2b2823' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', transform: `scale(${checked ? pop : 1})` }}>
+        {checked && <svg width="11" height="8" viewBox="0 0 11 8" fill="none"><path d="M1 4l3 3 6-6" stroke="#f4efe3" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+      </div>
+      <div style={{ fontFamily: 'EB Garamond,serif', fontSize: 18, fontWeight: 500, color: '#2b2823', lineHeight: 1 }}>{label}</div>
+    </div>
+  );
+}
+
+function RecCard({ name, detail, t, selectedAt = 999 }) {
+  const sel = t >= selectedAt + 0.05;
+  const pp = clamp((t - (selectedAt + 0.05)) / 0.22, 0, 1);
+  const pop = pp < 0.5 ? 1 + pp * 0.014 : 1.007 - (pp - 0.5) * 0.014;
+  return (
+    <div style={{ border: `1.5px solid ${sel ? '#2b2823' : '#d5cebb'}`, borderRadius: 10, padding: '14px 16px', background: sel ? '#ede8da' : '#f6f1e6', display: 'flex', alignItems: 'flex-start', gap: 12, transform: `scale(${sel ? pop : 1})` }}>
+      <div style={{ width: 18, height: 18, flexShrink: 0, border: `1.5px solid ${sel ? '#2b2823' : '#cdc6b6'}`, borderRadius: '50%', background: sel ? '#2b2823' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 2 }}>
+        {sel && <svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5l2.5 2.5 5-5" stroke="#f4efe3" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+      </div>
+      <div>
+        <div style={{ fontFamily: 'EB Garamond,serif', fontSize: 17, fontWeight: 500, color: '#2b2823', lineHeight: 1.1, marginBottom: 3 }}>{name}</div>
+        <div style={{ fontFamily: 'Inter,sans-serif', fontSize: 10, color: '#a8a297', letterSpacing: '0.02em', lineHeight: 1.5 }}>{detail}</div>
+      </div>
+    </div>
+  );
+}
+
+/* ── S1: "You have enough to remember" + "Life has maintenance requirements" ── */
+function Cursor({ on }) {
+  return <span style={{ display: 'inline-block', width: 1.5, height: 22, background: '#8ea394', borderRadius: 1, marginLeft: 2, verticalAlign: 'middle', position: 'relative', top: -2, opacity: on ? 1 : 0 }}/>;
+}
+
+function Scene1({ t }) {
+  const logoOp = tw(t, 0.5, 1.4, 0, 1);
+  const logoY  = tw(t, 0.5, 1.4, 16, 0);
+  const skipOp = tw(t, 1.8, 2.3, 0, 1);
+  const headOp = t < SHOW_FINAL ? tw(t, 1.1, 2.1, 0, 1) : tw(t, SHOW_FINAL, SHOW_FINAL + 0.55, 1, 0);
+  const headY  = t < SHOW_FINAL ? tw(t, 1.1, 2.1, 16, 0) : tw(t, SHOW_FINAL, SHOW_FINAL + 0.55, 0, -10);
+  const blink  = Math.floor(t / 0.45) % 2 === 0;
+
+  const P1 = "The facial you've been meaning to schedule.";
+  const P2 = "Your roots are starting to show.";
+  const P3 = "The dates that live in your head\u2009\u2026\u2009until they don't.";
+
+  const p1Chars = Math.floor(Math.max(0, (t - 1.4) * 1000 / 28));
+  const p2Chars = Math.floor(Math.max(0, (t - 3.1) * 1000 / 30));
+  const p3Chars = Math.floor(Math.max(0, (t - 4.6) * 1000 / 22));
+
+  const p1Op = t < 2.7 ? 1 : tw(t, 2.7, 3.0, 1, 0);
+  const p2Op = t < 4.1 ? 1 : tw(t, 4.1, 4.4, 1, 0);
+  const p3Op = t < 7.5 ? 1 : tw(t, 7.5, 7.9, 1, 0);  // shorter hold → faster to Screen 2
+
+  const showP1 = t >= 1.4 && t < 3.05;
+  const showP2 = t >= 3.1 && t < 4.45;
+  const showP3 = t >= 4.6 && t < 7.95;
+
+  const f1Op  = tw(t, FINAL_WRAP,       FINAL_WRAP + 0.8,  0, 1);
+  const f1Y   = tw(t, FINAL_WRAP,       FINAL_WRAP + 0.8,  14, 0);
+  const f2Op  = tw(t, FINAL_WRAP + 0.6, FINAL_WRAP + 1.4,  0, 1);
+  const f2Y   = tw(t, FINAL_WRAP + 0.6, FINAL_WRAP + 1.4,  10, 0);
+  const btnOp = tw(t, SHOW_FINAL + 2.18, SHOW_FINAL + 2.83, 0, 1);  // "Continue" appears
+  const btnY  = tw(t, SHOW_FINAL + 2.18, SHOW_FINAL + 2.83, 12, 0);
+
+  const ps = (op) => ({ fontFamily: 'EB Garamond,serif', fontSize: 24, fontStyle: 'italic', color: '#6b665e', lineHeight: 1.38, opacity: op });
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, padding: '54px 38px 52px', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ marginTop: 14, opacity: logoOp, transform: `translateY(${logoY}px)` }}><Wordmark/></div>
+      <div style={{ position: 'absolute', top: 68, right: 38, fontFamily: 'Inter,sans-serif', fontSize: 12, color: '#a8a297', opacity: skipOp, letterSpacing: '0.04em' }}>Skip</div>
+
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', paddingBottom: 28 }}>
+        {headOp > 0.01 && (
+          <div style={{ fontFamily: 'EB Garamond,serif', fontSize: 38, fontWeight: 500, lineHeight: 1.08, color: '#2b2823', marginBottom: 32, opacity: headOp, transform: `translateY(${headY}px)` }}>
+            You have enough<br/>to remember.
+          </div>
+        )}
+        <div style={{ minHeight: 96, display: 'flex', alignItems: 'flex-start' }}>
+          {showP1 && <span style={ps(p1Op)}>{P1.substring(0, Math.min(p1Chars, P1.length))}{p1Op > 0.3 && <Cursor on={blink}/>}</span>}
+          {showP2 && <span style={ps(p2Op)}>{P2.substring(0, Math.min(p2Chars, P2.length))}{p2Op > 0.3 && <Cursor on={blink}/>}</span>}
+          {showP3 && <span style={ps(p3Op)}>{P3.substring(0, Math.min(p3Chars, P3.length))}{p3Op > 0.3 && <Cursor on={blink}/>}</span>}
+        </div>
+        {t >= SHOW_FINAL + 0.4 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ fontFamily: 'EB Garamond,serif', fontSize: 34, fontWeight: 500, lineHeight: 1.1, color: '#2b2823', opacity: f1Op, transform: `translateY(${f1Y}px)` }}>
+              Life has maintenance<br/>requirements.
+            </div>
+            <div style={{ fontFamily: 'EB Garamond,serif', fontSize: 28, fontStyle: 'italic', lineHeight: 1.1, color: '#2b2823', opacity: f2Op, transform: `translateY(${f2Y}px)` }}>
+              You deserve to be<br/>included in them.
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Continue — tapped at 11.8 giving Screen 2 "Life has maintenance req." an extra beat */}
+      {btnOp > 0.01 && (
+        <div style={{ position: 'absolute', bottom: 52, left: 38, opacity: btnOp, transform: `translateY(${btnY}px)` }}>
+          <GreenBtn label="Continue"/>
+        </div>
+      )}
+      <TapRipple t={t} at={11.8} cx={88} cy={742}/>
+    </div>
+  );
+}
+
+/* ── S3: "Because you're also on the list" — cut in half (~3s) ── */
+function Scene2({ t }) {
+  const lT    = t - 12.1;
+  const smOp  = tw(lT, 0.3, 0.8, 0, 1);
+  const lgOp  = tw(lT, 0.6, 1.1, 0, 1);
+  const tagOp = tw(lT, 0.85, 1.35, 0, 1);
+  const tagY  = tw(lT, 0.85, 1.35, 10, 0);
+  const subOp = tw(lT, 1.1, 1.6, 0, 1);
+  const subY  = tw(lT, 1.1, 1.6, 10, 0);
+  const dotOp = tw(lT, 1.4, 1.8, 0, 1);
+  const btnOp = tw(lT, 1.5, 2.0, 0, 1);
+  const btnY  = tw(lT, 1.5, 2.0, 10, 0);
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, padding: '54px 38px 52px', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ marginTop: 14, opacity: smOp }}><Wordmark/></div>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', paddingBottom: 60 }}>
+        <div style={{ opacity: lgOp }}><Wordmark size={56}/></div>
+        <div style={{ fontFamily: 'EB Garamond,serif', fontSize: 26, lineHeight: 1.2, color: '#2b2823', marginTop: 18, opacity: tagOp, transform: `translateY(${tagY}px)` }}>
+          Because you're <em>also</em><br/>on the list.
+        </div>
+        <div style={{ fontFamily: 'EB Garamond,serif', fontSize: 16, fontStyle: 'italic', lineHeight: 1.5, color: '#6b665e', marginTop: 16, opacity: subOp, transform: `translateY(${subY}px)` }}>
+          The place for your recurring care,<br/>products, progress, and event prep.
+        </div>
+        <div style={{ display: 'flex', gap: 6, marginTop: 48, opacity: dotOp }}>
+          <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#cdc6b6' }}/>
+          <div style={{ width: 18, height: 5, borderRadius: 3, background: '#4d7a61' }}/>
+        </div>
+      </div>
+      {lT > 1.3 && (
+        <div style={{ position: 'absolute', bottom: 52, left: 38, opacity: btnOp, transform: `translateY(${btnY}px)` }}>
+          <GreenBtn label="Get Started"/>
+        </div>
+      )}
+      <TapRipple t={t} at={14.5} cx={88} cy={742}/>
+    </div>
+  );
+}
+
+/* ── S4: "What brings you here?" — back to prior pace ── */
+function Scene3({ t }) {
+  const lT      = t - 15.4;
+  const headOp  = tw(lT, 0.3, 0.8, 0, 1);
+  const headY   = tw(lT, 0.3, 0.8, 14, 0);
+  const cardsOp = tw(lT, 0.6, 1.1, 0, 1);
+  const cardsY  = tw(lT, 0.6, 1.1, 14, 0);
+  const mainSel = t >= 17.2;
+  const nextOp  = tw(t, 17.3, 17.8, 0, 1);
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, padding: '54px 38px 110px', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ marginTop: 14 }}><Wordmark/></div>
+      <div style={{ marginTop: 28, opacity: headOp, transform: `translateY(${headY}px)` }}>
+        <div style={{ fontFamily: 'Inter,sans-serif', fontSize: 9, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#a8a297', marginBottom: 6 }}>Tell us about you</div>
+        <div style={{ fontFamily: 'EB Garamond,serif', fontSize: 30, fontWeight: 500, lineHeight: 1.05, color: '#2b2823' }}>What brings<br/>you here?</div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 28, opacity: cardsOp, transform: `translateY(${cardsY}px)` }}>
+        <div style={{ border: '1.5px solid #2b2823', borderRadius: 12, padding: '18px 20px 16px', background: mainSel ? '#2b2823' : '#f6f1e6' }}>
+          <div style={{ fontFamily: 'EB Garamond,serif', fontSize: 22, fontWeight: 500, color: mainSel ? '#f4efe3' : '#2b2823', marginBottom: 4 }}>Maintenance Path</div>
+          <div style={{ fontFamily: 'EB Garamond,serif', fontSize: 15, fontStyle: 'italic', color: mainSel ? 'rgba(244,239,227,.55)' : '#6b665e', marginBottom: 10 }}>Stay on top of recurring care</div>
+          <div style={{ fontFamily: 'Inter,sans-serif', fontSize: 10, color: mainSel ? 'rgba(244,239,227,.6)' : '#a8a297', letterSpacing: '0.02em' }}>Hair color · Facials · Nails · Skincare · Wellness</div>
+        </div>
+        <div style={{ border: '1.5px solid #2b2823', borderRadius: 12, padding: '18px 20px 16px', background: '#f6f1e6' }}>
+          <div style={{ fontFamily: 'EB Garamond,serif', fontSize: 22, fontWeight: 500, color: '#2b2823', marginBottom: 4 }}>Event Path</div>
+          <div style={{ fontFamily: 'EB Garamond,serif', fontSize: 15, fontStyle: 'italic', color: '#6b665e', marginBottom: 10 }}>Get ready for something</div>
+          <div style={{ fontFamily: 'Inter,sans-serif', fontSize: 10, color: '#a8a297', letterSpacing: '0.02em' }}>Vacation · Wedding · Photoshoot · Holiday · Cruise</div>
+        </div>
+      </div>
+      {mainSel && <div style={{ position: 'absolute', bottom: 52, left: 38, opacity: nextOp }}><GreenBtn label="Next →"/></div>}
+      <TapRipple t={t} at={17.2} cx={195} cy={348}/>
+      <TapRipple t={t} at={19.0} cx={75}  cy={742}/>
+    </div>
+  );
+}
+
+/* ── S5: "What do you maintain?" — transition sooner after nails ── */
+function Scene4({ t }) {
+  const lT     = t - 19.6;
+  const headOp = tw(lT, 0.3, 0.8, 0, 1);
+  const headY  = tw(lT, 0.3, 0.8, 14, 0);
+  const listOp = tw(lT, 0.6, 1.1, 0, 1);
+  const listY  = tw(lT, 0.6, 1.1, 14, 0);
+  const hairAt  = 21.0;
+  const nailsAt = 22.5;
+  const btnOp   = tw(t, 23.5, 24.0, 0, 1);
+
+  const rows = [
+    { label: 'Hair',         checkedAt: hairAt  },
+    { label: 'Skin',         checkedAt: 999     },
+    { label: 'Nails',        checkedAt: nailsAt },
+    { label: 'Hair Removal', checkedAt: 999     },
+    { label: 'Makeup',       checkedAt: 999     },
+  ];
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, padding: '54px 38px 110px', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ marginTop: 14 }}><Wordmark/></div>
+      <div style={{ marginTop: 28, opacity: headOp, transform: `translateY(${headY}px)` }}>
+        <div style={{ fontFamily: 'Inter,sans-serif', fontSize: 9, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#4d7a61', marginBottom: 6 }}>Tell us about you</div>
+        <div style={{ fontFamily: 'EB Garamond,serif', fontSize: 30, fontWeight: 500, lineHeight: 1.05, color: '#2b2823', marginBottom: 4 }}>What do you<br/>maintain?</div>
+        <div style={{ fontFamily: 'Inter,sans-serif', fontSize: 11, color: '#a8a297', letterSpacing: '0.02em' }}>Select <em style={{ fontStyle: 'italic', color: '#6b665e' }}>all</em> that apply</div>
+      </div>
+      <div style={{ marginTop: 24, opacity: listOp, transform: `translateY(${listY}px)`, borderTop: '1px solid #d5cebb' }}>
+        {rows.map(r => <CheckRow key={r.label} label={r.label} t={t} checkedAt={r.checkedAt}/>)}
+      </div>
+      {t >= 23.3 && <div style={{ position: 'absolute', bottom: 52, left: 38, opacity: btnOp }}><GreenBtn label="Continue →"/></div>}
+      <TapRipple t={t} at={hairAt}  cx={57} cy={312}/>
+      <TapRipple t={t} at={nailsAt} cx={57} cy={402}/>
+      <TapRipple t={t} at={23.8}    cx={88} cy={742}/>
+    </div>
+  );
+}
+
+/* ── S6: "Recommended starting points" — transition to final earlier ── */
+function Scene5({ t }) {
+  const lT     = t - 24.3;
+  const headOp = tw(lT, 0.4, 0.9, 0, 1);
+  const headY  = tw(lT, 0.4, 0.9, 14, 0);
+  const c1Op   = tw(lT, 0.9, 1.4, 0, 1);
+  const c1Y    = tw(lT, 0.9, 1.4, 14, 0);
+  const c2Op   = tw(lT, 1.2, 1.7, 0, 1);
+  const c2Y    = tw(lT, 1.2, 1.7, 14, 0);
+  const c3Op   = tw(lT, 1.5, 2.0, 0, 1);
+  const c3Y    = tw(lT, 1.5, 2.0, 14, 0);
+  const h1At   = 26.0;
+  const n1At   = 27.5;
+  const btnOp  = tw(t, 29.0, 29.5, 0, 1);
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, padding: '54px 38px 110px', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ marginTop: 14 }}><Wordmark/></div>
+      <div style={{ marginTop: 28, opacity: headOp, transform: `translateY(${headY}px)` }}>
+        <div style={{ fontFamily: 'Inter,sans-serif', fontSize: 9, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#4d7a61', marginBottom: 6 }}>Tell us about you</div>
+        <div style={{ fontFamily: 'EB Garamond,serif', fontSize: 28, fontWeight: 500, lineHeight: 1.05, color: '#2b2823', marginBottom: 4 }}>Recommended<br/>starting points</div>
+        <div style={{ fontFamily: 'EB Garamond,serif', fontSize: 15, fontStyle: 'italic', color: '#6b665e', lineHeight: 1.3 }}>Based on your selections</div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 24 }}>
+        <div style={{ opacity: c1Op, transform: `translateY(${c1Y}px)` }}>
+          <RecCard name="Hair Color Maintenance" detail="Root touch-ups · Glosses · Color masks" t={t} selectedAt={h1At}/>
+        </div>
+        <div style={{ opacity: c2Op, transform: `translateY(${c2Y}px)` }}>
+          <RecCard name="Gel/Dip Nail Maintenance" detail="Manicures · Pedicures · Color history" t={t} selectedAt={n1At}/>
+        </div>
+        <div style={{ opacity: c3Op, transform: `translateY(${c3Y}px)` }}>
+          <RecCard name="Makeup Refresh Routine" detail="Foundation touch-ups · Expiry tracking · Restocks" t={t} selectedAt={999}/>
+        </div>
+      </div>
+      {lT >= 4.5 && <div style={{ position: 'absolute', bottom: 52, left: 38, opacity: btnOp }}><GreenBtn label="Add Selected"/></div>}
+      <TapRipple t={t} at={h1At} cx={57} cy={326}/>
+      <TapRipple t={t} at={n1At} cx={57} cy={395}/>
+      <TapRipple t={t} at={30.0} cx={96} cy={742}/>
+    </div>
+  );
+}
+
+/* ── Final slide: "You're all set" — with close button ── */
+function SceneDone({ t }) {
+  const lT    = t - 31.3;
+  const kOp   = tw(lT, 0.3, 0.8, 0, 1);
+  const hOp   = tw(lT, 0.5, 1.0, 0, 1);
+  const hY    = tw(lT, 0.5, 1.0, 14, 0);
+  const bOp   = tw(lT, 0.9, 1.5, 0, 1);
+  const bY    = tw(lT, 0.9, 1.5, 10, 0);
+  const btnOp = tw(lT, 1.5, 2.1, 0, 1);
+
+  function handleClose() {
+    window.parent.postMessage({ type: 'close-video' }, '*');
+    if (window.parent === window) window.location.href = 'Homepage.html';
+  }
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, padding: '54px 38px 110px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+      {/* Close button */}
+      <button onClick={handleClose} style={{ position: 'absolute', top: 68, right: 38, width: 34, height: 34, borderRadius: '50%', background: 'rgba(43,40,35,0.07)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, color: '#6b665e', lineHeight: 1, zIndex: 10 }}>×</button>
+
+      <div style={{ opacity: kOp, fontFamily: 'Inter,sans-serif', fontSize: 9, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#4d7a61', marginBottom: 10 }}>You're in</div>
+      <div style={{ fontFamily: 'EB Garamond,serif', fontSize: 42, fontWeight: 500, lineHeight: 1, color: '#2b2823', marginBottom: 24, opacity: hOp, transform: `translateY(${hY}px)` }}>You're all set</div>
+      <div style={{ fontFamily: 'EB Garamond,serif', fontSize: 22, lineHeight: 1.45, color: '#2b2823', opacity: bOp, transform: `translateY(${bY}px)` }}>
+        We'll build your schedule<br/>from the dates you enter<br/>and <em style={{ fontStyle: 'italic', color: '#6b665e' }}>adjust as life happens.</em>
+      </div>
+      {lT >= 1.3 && (
+        <div style={{ marginTop: 40, display: 'flex', flexDirection: 'column', gap: 12, opacity: btnOp }}>
+          <a href="Onboarding Screen 1.html" style={{ textDecoration: 'none' }}>
+            <GreenBtn label="Get started →"/>
+          </a>
+          <button onClick={handleClose} style={{ fontFamily: 'Inter,sans-serif', fontSize: 12, color: '#a8a297', background: 'none', border: 'none', cursor: 'pointer', letterSpacing: '0.04em', textAlign: 'left', padding: '4px 0' }}>Close preview</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Root ── */
+const DUR = 37;
+
+function PhoneContent() {
+  const t = useTime();
+  const ref = React.useRef(null);
+  React.useEffect(() => { if (ref.current) ref.current.setAttribute('data-screen-label', `t=${Math.floor(t)}s`); });
+
+  const ops = {
+    s1:   scOp(t,  0,    0.3,  12.0, 12.5),
+    s2:   scOp(t, 11.6, 12.1, 14.7, 15.2),
+    s3:   scOp(t, 14.9, 15.4, 19.3, 19.8),
+    s4:   scOp(t, 19.1, 19.6, 24.0, 24.5),
+    s5:   scOp(t, 23.8, 24.3, 31.0, 31.5),
+    done: scOp(t, 30.8, 31.3, 36.5, 37.0),
+  };
+
+  return (
+    <div ref={ref} data-screen-label="t=0s" style={{ position: 'relative', width: '100%', height: '100%', background: '#efe9dd', overflow: 'hidden' }}>
+      <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: 130, height: 32, background: '#16140f', borderRadius: '0 0 20px 20px', zIndex: 20 }}/>
+      <StatusBar/>
+      <div style={{ opacity: ops.s1,   position: 'absolute', inset: 0 }}><Scene1    t={t}/></div>
+      <div style={{ opacity: ops.s2,   position: 'absolute', inset: 0 }}><Scene2    t={t}/></div>
+      <div style={{ opacity: ops.s3,   position: 'absolute', inset: 0 }}><Scene3    t={t}/></div>
+      <div style={{ opacity: ops.s4,   position: 'absolute', inset: 0 }}><Scene4    t={t}/></div>
+      <div style={{ opacity: ops.s5,   position: 'absolute', inset: 0 }}><Scene5    t={t}/></div>
+      <div style={{ opacity: ops.done, position: 'absolute', inset: 0 }}><SceneDone t={t}/></div>
+    </div>
+  );
+}
+
+function App() {
+  return (
+    <Stage width={375} height={812} duration={DUR} background="#16140f">
+      <PhoneContent/>
+    </Stage>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+<div id="root"></div>
+</body>
+</html>
