@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { notFound, redirect } from 'next/navigation';
+import Link from 'next/link';
 import TaskForm from '@/components/forms/TaskForm';
 import type { Task, Category, TaskFormValues, ProductFormEntry, ServiceProviderFormEntry } from '@/types';
 
@@ -61,9 +62,10 @@ export default async function EditTaskPage({ params }: Props) {
     intervalMax:           t.interval_max_days,
     intervalUnit:          'days',
     slotALabel:            t.slot_a_label ?? '',
-    slotATime:             t.slot_a_time ?? '',
+    // PM slot mirrors mobile's scheduled_time_pm; fall back to slot_a/b_time
+    slotATime:             t.slot_a_time ?? (t.frequency_type === 'twice_daily' ? (t.scheduled_time ?? '') : ''),
     slotBLabel:            t.slot_b_label ?? '',
-    slotBTime:             t.slot_b_time ?? '',
+    slotBTime:             t.slot_b_time ?? ((t as { scheduled_time_pm?: string | null }).scheduled_time_pm ?? ''),
     scheduledTime:         t.scheduled_time ?? '',
     timeOfDayLabel:        t.time_of_day_label ?? '',
     default_reminder_days: t.default_reminder_days,
@@ -122,7 +124,15 @@ export default async function EditTaskPage({ params }: Props) {
 
   return (
     <div className="max-w-2xl mx-auto px-5 py-8 space-y-6">
-      <h1 className="font-display text-3xl text-charcoal">Edit Ritual</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="font-display text-3xl text-charcoal">Edit Ritual</h1>
+        <Link
+          href={`/tasks/${id}/history`}
+          style={{ fontFamily: 'Inter, sans-serif', fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ink-faint)', textDecoration: 'none' }}
+        >
+          View history →
+        </Link>
+      </div>
       <div className="bg-stone border border-glow-border rounded-lg shadow-card p-5">
         <TaskForm
           categories={categories ?? []}

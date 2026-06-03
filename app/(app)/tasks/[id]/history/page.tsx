@@ -2,7 +2,8 @@ import { createClient } from '@/lib/supabase/server';
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { format, parseISO } from 'date-fns';
-import type { Task, Instance } from '@/types';
+import type { Task } from '@/types';
+import { loadRitualHistory } from '@/lib/history';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,27 +20,18 @@ export default async function RitualHistoryPage({ params }: Props) {
 
   if (!user) redirect('/login');
 
-  const [{ data: task }, { data: history }] = await Promise.all([
+  const [{ data: task }, rows] = await Promise.all([
     supabase
       .from('tasks')
       .select('id, name')
       .eq('id', id)
       .eq('user_id', user.id)
       .single(),
-    supabase
-      .from('instances')
-      .select('id, status, actual_completion_date, due_date_start')
-      .eq('task_id', id)
-      .eq('user_id', user.id)
-      .in('status', ['completed', 'skipped'])
-      .eq('is_projected', false)
-      .order('actual_completion_date', { ascending: false, nullsFirst: false })
-      .order('due_date_start', { ascending: false }),
+    loadRitualHistory(supabase, user.id, id),
   ]);
 
   if (!task) notFound();
   const t = task as Pick<Task, 'id' | 'name'>;
-  const rows = (history ?? []) as Pick<Instance, 'id' | 'status' | 'actual_completion_date' | 'due_date_start'>[];
 
   return (
     <div className="max-w-2xl mx-auto px-5 py-8 space-y-6">

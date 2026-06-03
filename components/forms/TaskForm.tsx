@@ -250,6 +250,17 @@ export default function TaskForm({
   const [showTimeOfDay,  setShowTimeOfDay]  = useState(
     !!(initialValues?.scheduledTime || initialValues?.timeOfDayLabel)
   );
+  // Daily / Twice-daily AM/PM quick-assign (mirrors mobile scheduled_time / scheduled_time_pm)
+  const [dailySlot, setDailySlot] = useState<'am' | 'pm' | 'advanced'>(() => {
+    const st = initialValues?.scheduledTime;
+    if (st === '07:00') return 'am';
+    if (st === '19:00') return 'pm';
+    return st ? 'advanced' : 'am';
+  });
+  const [twiceAdvanced, setTwiceAdvanced] = useState<boolean>(() => {
+    const a = initialValues?.slotATime, b = initialValues?.slotBTime;
+    return !!((a && a !== '07:00') || (b && b !== '19:00'));
+  });
   const [autocompleteEnabled, setAutocompleteEnabled] = useState(
     initialValues?.autocomplete_enabled ?? false
   );
@@ -327,6 +338,13 @@ export default function TaskForm({
     const supabase = createClient();
     getCommonTasks(supabase).then(setCommonTasks);
   }, []);
+
+  // Daily / Twice-daily reminders are measured in HOURS before the slot.
+  useEffect(() => {
+    if (frequencyType === 'daily' || frequencyType === 'twice_daily') {
+      setReminderUnit('hours');
+    }
+  }, [frequencyType]);
 
   useEffect(() => {
     if (!categoryId) { setSavedProviders([]); return; }
@@ -536,8 +554,20 @@ export default function TaskForm({
     }
 
     const isTwiceD = frequencyType === 'twice_daily';
+    const isDaily  = frequencyType === 'daily';
     const providerCostNum = providerCost !== '' ? Number(providerCost) : null;
     const phoneDigits = stripPhoneFormatting(providerPhone) || null;
+
+    // AM/PM slot times. Mirror mobile's shape: scheduled_time = AM (or the
+    // single Daily time), scheduled_time_pm = PM (Twice Daily only). slot_a/b
+    // are kept in sync so web's instance engine still schedules twice-daily.
+    const amTime = isTwiceD ? (twiceAdvanced ? (slotATime || '07:00') : '07:00') : null;
+    const pmTime = isTwiceD ? (twiceAdvanced ? (slotBTime || '19:00') : '19:00') : null;
+    const dailyTime = isDaily
+      ? (dailySlot === 'am' ? '07:00' : dailySlot === 'pm' ? '19:00' : (scheduledTime || '07:00'))
+      : null;
+    const intervalTime = (frequencyType === 'interval' && showTimeOfDay && scheduledTime) ? scheduledTime : null;
+    const effectiveScheduledTime = isTwiceD ? amTime : isDaily ? dailyTime : intervalTime;
 
     const taskPayload = {
       name:                  name.trim(),
@@ -567,11 +597,12 @@ export default function TaskForm({
       mode,
       frequency_type:        mode === 'standard' ? frequencyType : 'interval',
       slot_a_label:          isTwiceD ? (slotALabel.trim() || 'Morning') : null,
-      slot_a_time:           isTwiceD && slotATime  ? slotATime  : null,
+      slot_a_time:           isTwiceD ? amTime : null,
       slot_b_label:          isTwiceD ? (slotBLabel.trim() || 'Evening') : null,
-      slot_b_time:           isTwiceD && slotBTime  ? slotBTime  : null,
-      scheduled_time:        (!isTwiceD && showTimeOfDay && scheduledTime) ? scheduledTime : null,
-      time_of_day_label:     (!isTwiceD && showTimeOfDay && timeOfDayLabel.trim()) ? timeOfDayLabel.trim() : null,
+      slot_b_time:           isTwiceD ? pmTime : null,
+      scheduled_time:        effectiveScheduledTime,
+      scheduled_time_pm:     isTwiceD ? pmTime : null,
+      time_of_day_label:     (frequencyType === 'interval' && showTimeOfDay && timeOfDayLabel.trim()) ? timeOfDayLabel.trim() : null,
       initial_anchor_date:   mode === 'standard' && anchorType === 'past' && anchorDate ? anchorDate : null,
       target_date:           mode === 'countdown' ? targetDate : null,
       target_label:          mode === 'countdown' ? (targetLabel.trim() || null) : null,
@@ -855,29 +886,52 @@ export default function TaskForm({
               </div>
             )}
 
-            {frequencyType === 'twice_daily' && (
+            {/* Daily — AM/PM quick-assign + Advanced specific time */}
+            {frequencyType === 'daily' && (
               <div className="pl-3 border-l-2 border-glow-border space-y-2">
-                <p className="text-xs text-warm-light">Two occurrences per day. Each slot can have its own label and time.</p>
-                {([
-                  { slot: 'A', label: slotALabel, setLabel: setSlotALabel, time: slotATime, clockKey: 'slotA' as const },
-                  { slot: 'B', label: slotBLabel, setLabel: setSlotBLabel, time: slotBTime, clockKey: 'slotB' as const },
-                ] as const).map(s => (
-                  <div key={s.slot} className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-warm-mid w-5 flex-shrink-0">{s.slot === 'A' ? '1st' : '2nd'}</span>
-                    <input type="text" value={s.label} onChange={e => s.setLabel(e.target.value)} placeholder={s.slot === 'A' ? 'Morning' : 'Evening'} maxLength={20} className="flex-1" />
-                    <button
-                      type="button"
-                      onClick={() => setClockTarget(s.clockKey)}
-                      className="border border-glow-border rounded-md px-3 py-2 text-sm bg-stone text-charcoal min-w-[80px] text-left"
-                    >
-                      {s.time ? s.time : <span className="text-warm-light">Time</span>}
-                    </button>
+                <p className="text-xs font-medium text-warm-mid">When?</p>
+                <div className="flex rounded-lg border border-glow-border overflow-hidden">
+                  <button type="button" onClick={() => { setDailySlot('am'); setScheduledTime('07:00'); }} className={toggleCls(dailySlot === 'am')}>AM · 7:00</button>
+                  <button type="button" onClick={() => { setDailySlot('pm'); setScheduledTime('19:00'); }} className={toggleCls(dailySlot === 'pm')}>PM · 7:00</button>
+                </div>
+                {dailySlot !== 'advanced' ? (
+                  <button type="button" onClick={() => setDailySlot('advanced')} className="text-xs text-warm-mid hover:text-charcoal">Advanced — pick a specific time</button>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <input type="time" value={scheduledTime || '07:00'} onChange={e => setScheduledTime(e.target.value)} className="border border-glow-border rounded-md px-3 py-2 text-sm bg-stone text-charcoal" />
+                    <button type="button" onClick={() => { setDailySlot('am'); setScheduledTime('07:00'); }} className="text-xs text-warm-light hover:text-charcoal">Use AM/PM</button>
                   </div>
-                ))}
+                )}
               </div>
             )}
 
-            {frequencyType !== 'twice_daily' && (
+            {/* Twice daily — both slots always apply; quick locks 7:00 + 19:00 */}
+            {frequencyType === 'twice_daily' && (
+              <div className="pl-3 border-l-2 border-glow-border space-y-2">
+                <p className="text-xs text-warm-light">Two occurrences per day — a morning and an evening slot.</p>
+                {!twiceAdvanced ? (
+                  <div className="space-y-2">
+                    <p className="text-xs text-charcoal">Locked to <span className="font-medium">7:00 AM</span> and <span className="font-medium">7:00 PM</span>.</p>
+                    <button type="button" onClick={() => { setTwiceAdvanced(true); if (!slotATime) setSlotATime('07:00'); if (!slotBTime) setSlotBTime('19:00'); }} className="text-xs text-warm-mid hover:text-charcoal">Advanced — pick specific times</button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-warm-mid w-10 flex-shrink-0">AM</span>
+                      <input type="time" value={slotATime || '07:00'} onChange={e => setSlotATime(e.target.value)} className="border border-glow-border rounded-md px-3 py-2 text-sm bg-stone text-charcoal" />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-warm-mid w-10 flex-shrink-0">PM</span>
+                      <input type="time" value={slotBTime || '19:00'} onChange={e => setSlotBTime(e.target.value)} className="border border-glow-border rounded-md px-3 py-2 text-sm bg-stone text-charcoal" />
+                    </div>
+                    <button type="button" onClick={() => { setTwiceAdvanced(false); setSlotATime('07:00'); setSlotBTime('19:00'); }} className="text-xs text-warm-light hover:text-charcoal">Use 7:00 / 19:00</button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Custom interval — optional time of day */}
+            {frequencyType === 'interval' && (
               <div>
                 {!showTimeOfDay ? (
                   <button type="button" onClick={() => setShowTimeOfDay(true)} className="text-xs text-warm-mid hover:text-charcoal">+ Add time of day</button>
