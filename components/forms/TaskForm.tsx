@@ -586,9 +586,11 @@ export default function TaskForm({
       reminder_enabled:      reminderEnabled,
       reminder_value:        reminderValue,
       reminder_unit:         reminderUnit,
-      default_reminder_days: reminderEnabled
+      // Dedicated hours-before offset for Daily/Twice-daily (0 = at the slot).
+      // Mirrors mobile — do NOT fold hours into default_reminder_days.
+      reminder_hours:        (reminderEnabled && reminderUnit === 'hours') ? reminderValue : null,
+      default_reminder_days: (reminderEnabled && reminderUnit !== 'hours')
         ? (reminderUnit === 'days' ? reminderValue
-          : reminderUnit === 'hours' ? Math.round(reminderValue / 24)
           : reminderUnit === 'weeks' ? reminderValue * 7
           : 0) // 'minutes' — below 1-day granularity, store as 0
         : 0,
@@ -1261,28 +1263,46 @@ export default function TaskForm({
 
         {reminderEnabled && !autocompleteEnabled && (
           <div className="pl-3 border-l-2 border-glow-border">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm text-warm-mid">Remind me</span>
-              <input
-                type="number"
-                min={1}
-                max={99}
-                value={reminderValue}
-                onChange={e => setReminderValue(Number(e.target.value))}
-                className="w-16 text-center"
-              />
-              <select
-                value={reminderUnit}
-                onChange={e => setReminderUnit(e.target.value as 'minutes' | 'hours' | 'days' | 'weeks')}
-                className="border border-glow-border rounded-md px-2 py-2 text-sm bg-stone"
-              >
-                <option value="minutes">minutes</option>
-                <option value="hours">hours</option>
-                <option value="days">days</option>
-                <option value="weeks">weeks</option>
-              </select>
-              <span className="text-sm text-warm-mid">before</span>
-            </div>
+            {(frequencyType === 'daily' || frequencyType === 'twice_daily') ? (
+              <>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm text-warm-mid">Remind me</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={24}
+                    value={reminderValue}
+                    onChange={e => setReminderValue(Math.max(0, Number(e.target.value)))}
+                    className="w-16 text-center"
+                  />
+                  <span className="text-sm text-warm-mid">hours before the slot</span>
+                </div>
+                <p className="text-xs text-warm-light mt-1">0 = at the scheduled time.</p>
+              </>
+            ) : (
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm text-warm-mid">Remind me</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={99}
+                  value={reminderValue}
+                  onChange={e => setReminderValue(Number(e.target.value))}
+                  className="w-16 text-center"
+                />
+                <select
+                  value={reminderUnit}
+                  onChange={e => setReminderUnit(e.target.value as 'minutes' | 'hours' | 'days' | 'weeks')}
+                  className="border border-glow-border rounded-md px-2 py-2 text-sm bg-stone"
+                >
+                  <option value="minutes">minutes</option>
+                  <option value="hours">hours</option>
+                  <option value="days">days</option>
+                  <option value="weeks">weeks</option>
+                </select>
+                <span className="text-sm text-warm-mid">before</span>
+              </div>
+            )}
           </div>
         )}
       </div>

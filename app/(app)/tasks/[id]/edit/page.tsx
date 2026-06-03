@@ -80,8 +80,13 @@ export default async function EditTaskPage({ params }: Props) {
     prep_notes:            t.prep_notes ?? '',
     autocomplete_enabled:  t.autocomplete_enabled,
     reminder_enabled:      t.reminder_enabled,
-    reminder_value:        t.reminder_value,
-    reminder_unit:         t.reminder_unit,
+    // Daily/Twice-daily store the offset in reminder_hours (mobile shape)
+    reminder_value:        (t.frequency_type === 'daily' || t.frequency_type === 'twice_daily')
+      ? ((t as { reminder_hours?: number | null }).reminder_hours ?? t.reminder_value ?? 0)
+      : t.reminder_value,
+    reminder_unit:         (t.frequency_type === 'daily' || t.frequency_type === 'twice_daily')
+      ? 'hours'
+      : t.reminder_unit,
   };
 
   type RawTaskProduct = {
