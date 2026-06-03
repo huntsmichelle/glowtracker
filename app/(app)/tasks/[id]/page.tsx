@@ -129,9 +129,17 @@ export default async function TaskDetailPage({ params }: Props) {
 
       {/* Instance history */}
       <div>
-        <p className="label-overline mb-3">
-          {t.mode === 'countdown' ? 'Scheduled instances' : 'History'}
-        </p>
+        <div className="flex items-center justify-between mb-3">
+          <p className="label-overline">
+            {t.mode === 'countdown' ? 'Scheduled instances' : 'Upcoming'}
+          </p>
+          <Link
+            href={`/tasks/${id}/history`}
+            style={{ fontFamily: 'Inter, sans-serif', fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ink-faint)', textDecoration: 'none' }}
+          >
+            History →
+          </Link>
+        </div>
         {(instances ?? []).length === 0 ? (
           <p className="text-sm text-warm-light">No instances yet.</p>
         ) : (

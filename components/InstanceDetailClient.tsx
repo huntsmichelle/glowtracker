@@ -73,7 +73,9 @@ export default function InstanceDetailClient({ instance: initial }: Props) {
     eventDate && daysBefore > 0
       ? format(addDays(parseISO(eventDate), -daysBefore), 'MMM d, yyyy')
       : null;
-  const originalWindowLabel = `${format(parseISO(instance.due_date_start), 'MMM d')}–${format(parseISO(instance.due_date_end), 'MMM d, yyyy')}`;
+  const originalWindowLabel = (!instance.due_date_end || instance.due_date_start === instance.due_date_end)
+    ? format(parseISO(instance.due_date_start), 'MMM d, yyyy')
+    : `${format(parseISO(instance.due_date_start), 'MMM d')}–${format(parseISO(instance.due_date_end), 'MMM d, yyyy')}`;
 
   async function handleComplete() {
     setLoading(true);
@@ -164,8 +166,9 @@ export default function InstanceDetailClient({ instance: initial }: Props) {
             <span className="text-warm-light">Window</span>
             <span>
               {format(parseISO(instance.due_date_start), 'MMM d')}
-              {' – '}
-              {format(parseISO(instance.due_date_end), 'MMM d, yyyy')}
+              {instance.due_date_end && instance.due_date_end !== instance.due_date_start
+                ? <>{' – '}{format(parseISO(instance.due_date_end), 'MMM d, yyyy')}</>
+                : <>{', '}{format(parseISO(instance.due_date_start), 'yyyy')}</>}
             </span>
           </div>
           {instance.is_event_override && instance.event_date && (

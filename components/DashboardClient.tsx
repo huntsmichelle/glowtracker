@@ -597,7 +597,9 @@ export default function DashboardClient({
     const isOverdue = differenceInDays(today(), parseISO(instance.due_date_end)) > 0;
     const categoryColor = getCategoryColor(instance.task?.category?.name ?? '').dot;
     const isCountdown   = instance.task?.mode === 'countdown';
-    const dateLabel = `${format(parseISO(instance.due_date_start), 'MMM d')} – ${format(parseISO(instance.due_date_end), 'MMM d')}`;
+    const dateLabel = (!instance.due_date_end || instance.due_date_start === instance.due_date_end)
+      ? format(parseISO(instance.due_date_start), 'MMM d')
+      : `${format(parseISO(instance.due_date_start), 'MMM d')} – ${format(parseISO(instance.due_date_end), 'MMM d')}`;
 
     let urgencyLabel: string;
     if (isOverdue)           urgencyLabel = `Ready for refresh — ${differenceInDays(today(), parseISO(instance.due_date_end))}d past window`;
