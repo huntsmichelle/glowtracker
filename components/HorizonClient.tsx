@@ -11,7 +11,6 @@ import {
   deleteInstance,
   deleteTask,
   today,
-  deriveStatus,
 } from '@/lib/instanceEngine';
 import type { InstanceWithTask, Task } from '@/types';
 import { getCategoryColor } from '@/lib/categoryColors';
@@ -180,8 +179,6 @@ export default function HorizonClient({ instances: initial, userId, summaryCount
   }
 
   function RitualRow({ inst }: { inst: InstanceWithTask }) {
-    const status = deriveStatus(inst);
-    const isDue = status === 'due';
     const categoryColor = getCategoryColor(inst.task?.category?.name ?? '').dot;
     const isExpanded = expandedRow === inst.id;
     const isLoading = loading === inst.id;
@@ -225,7 +222,7 @@ export default function HorizonClient({ instances: initial, userId, summaryCount
             {/* Context */}
             <div style={{ marginBottom: '10px' }}>
               <p style={{ fontSize: '12px', color: '#6b5c52' }}>
-                {isDue ? 'Ready today' : `Window: ${windowLabel}`}
+                Window: {windowLabel}
               </p>
               {prepNote && (
                 <p style={{ fontSize: '12px', color: '#6b5c52', marginTop: '2px' }}>

@@ -321,6 +321,7 @@ export default function TaskForm({
 
   const [error, setError]     = useState('');
   const [loading, setLoading] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     const supabase = createClient();
@@ -665,14 +666,12 @@ export default function TaskForm({
 
   async function handleDelete() {
     if (!isEdit) return;
-    const confirmed = window.confirm(
-      'Remove this ritual and all its history? This cannot be undone.'
-    );
-    if (!confirmed) return;
-
     setLoading(true);
     const supabase = createClient();
+    // Delete instances first, then the task itself.
+    await supabase.from('instances').delete().eq('task_id', taskId);
     await supabase.from('tasks').delete().eq('id', taskId);
+    setShowDeleteConfirm(false);
     router.push('/tasks');
     router.refresh();
   }
@@ -1532,11 +1531,42 @@ export default function TaskForm({
       </div>
 
       {isEdit && (
-        <button type="button" onClick={handleDelete} disabled={loading} className="w-full text-warm-light text-sm py-2 hover:text-charcoal hover:underline underline-offset-2">
+        <button type="button" onClick={() => setShowDeleteConfirm(true)} disabled={loading} className="w-full text-warm-light text-sm py-2 hover:text-charcoal hover:underline underline-offset-2">
           Remove this ritual
         </button>
       )}
     </form>
+
+    {showDeleteConfirm && (
+      <div
+        className="fixed inset-0 flex items-center justify-center z-50 p-4"
+        style={{ background: 'rgba(44,42,38,0.4)', backdropFilter: 'blur(4px)' }}
+        onClick={() => setShowDeleteConfirm(false)}
+      >
+        <div
+          className="bg-[#FFFFFF] rounded-lg w-full max-w-sm p-6 border border-glow-border"
+          style={{ boxShadow: '0 8px 24px rgba(43,40,35,0.14)' }}
+          onClick={e => e.stopPropagation()}
+        >
+          <p className="label-overline mb-1">Remove ritual</p>
+          <p className="text-sm text-warm-mid mb-5">
+            Remove <span className="font-medium text-charcoal">{name || 'this ritual'}</span> and all its
+            instances? This cannot be undone.
+          </p>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setShowDeleteConfirm(false)} disabled={loading}
+              className="flex-1 border border-glow-border text-warm-mid text-sm rounded-pill py-2.5 hover:bg-taupe disabled:opacity-50">
+              Cancel
+            </button>
+            <button type="button" onClick={handleDelete} disabled={loading}
+              className="flex-1 text-cream text-sm font-medium rounded-pill py-2.5 disabled:opacity-50"
+              style={{ backgroundColor: '#c08a6e' }}>
+              {loading ? 'Removing…' : 'Remove'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     </>
   );
 }

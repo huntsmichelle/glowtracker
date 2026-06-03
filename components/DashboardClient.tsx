@@ -1406,7 +1406,7 @@ export default function DashboardClient({
           return (
             <div
               key={instance.id}
-              className={`flex items-center gap-3 px-5 py-3 border-b border-glow-border last:border-b-0 ${isNow ? 'bg-cream/40' : ''}`}
+              className={`flex items-center gap-3 px-5 py-3 border-b border-[rgba(110,140,130,0.2)] last:border-b-0 ${isNow ? 'bg-cream/40' : ''}`}
             >
               {/* Date / NOW */}
               <div className="w-[52px] flex-shrink-0 flex justify-center">
@@ -1643,7 +1643,7 @@ export default function DashboardClient({
       <div className="hidden lg:flex flex-col h-screen">
 
         {/* Page header */}
-        <header className="flex-shrink-0 px-8 pt-7 pb-5 border-b border-glow-border">
+        <header className="flex-shrink-0 px-8 pt-7 pb-5" style={{ borderBottom: '1px solid rgba(110,140,130,0.2)' }}>
           <p className="label-overline mb-1.5">{dateOverline}</p>
           <h1 className="font-display text-3xl text-charcoal leading-tight">{greeting}</h1>
           <div className="flex items-center gap-3 mt-2">
@@ -1684,21 +1684,16 @@ export default function DashboardClient({
 
           {/* Card: In sequence */}
           <div
-            className="flex-1 min-w-0 flex flex-col bg-stone border border-glow-border rounded-2xl overflow-hidden"
-            style={{ boxShadow: '0 1px 3px rgba(53,39,32,0.06)' }}
+            className="flex-1 min-w-0 flex flex-col rounded-2xl overflow-hidden"
+            style={{ boxShadow: '0 1px 3px rgba(53,39,32,0.06)', backgroundColor: 'rgba(110,140,130,0.06)', border: '1px solid rgba(110,140,130,0.15)' }}
           >
             {/* Card header */}
-            <div className="flex-shrink-0 px-5 pt-5 pb-3 border-b border-glow-border flex items-center justify-between">
+            <div className="flex-shrink-0 px-5 pt-5 pb-3 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(110,140,130,0.2)' }}>
               <p className="label-overline">In sequence</p>
-              {instances.length > 0 && (
-                <p style={{ fontSize: '9px', color: '#a8998e', letterSpacing: '0.14em', textTransform: 'uppercase' }}>
-                  {instances.length} ritual{instances.length !== 1 ? 's' : ''}
-                </p>
-              )}
             </div>
 
             {/* Rolling 7-day stat boxes */}
-            <div className="flex-shrink-0 px-5 py-3" style={{ borderBottom: '1px solid #ddd4c4' }}>
+            <div className="flex-shrink-0 px-5 py-3" style={{ borderBottom: '1px solid rgba(110,140,130,0.2)' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
                 <div style={{ textAlign: 'center' }}>
                   <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '22px', color: '#352720', fontWeight: 400, lineHeight: 1 }}>
@@ -1711,14 +1706,14 @@ export default function DashboardClient({
                   <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '22px', color: '#6e8c82', fontWeight: 400, lineHeight: 1 }}>
                     {readyCount}
                   </p>
-                  <p style={{ fontSize: '9px', color: '#a8998e', marginTop: '4px', letterSpacing: '0.12em', textTransform: 'uppercase' }}>due</p>
+                  <p style={{ fontSize: '9px', color: '#a8998e', marginTop: '4px', letterSpacing: '0.12em', textTransform: 'uppercase' }}>active</p>
                   <p style={{ fontSize: '9px', color: '#a8998e', marginTop: '1px' }}>this week</p>
                 </div>
                 <div style={{ textAlign: 'center' }}>
                   <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '22px', fontWeight: 400, lineHeight: 1, color: pastWindowCount > 0 ? '#c08a6e' : '#a8998e' }}>
                     {pastWindowCount}
                   </p>
-                  <p style={{ fontSize: '9px', color: '#a8998e', marginTop: '4px', letterSpacing: '0.12em', textTransform: 'uppercase' }}>past</p>
+                  <p style={{ fontSize: '9px', color: '#a8998e', marginTop: '4px', letterSpacing: '0.12em', textTransform: 'uppercase' }}>attention</p>
                   <p style={{ fontSize: '9px', color: '#a8998e', marginTop: '1px' }}>this week</p>
                 </div>
               </div>
@@ -1763,7 +1758,7 @@ export default function DashboardClient({
               className="flex-1 min-w-0 flex flex-col bg-stone border border-glow-border rounded-2xl overflow-hidden"
               style={{ boxShadow: '0 1px 3px rgba(53,39,32,0.06)' }}
             >
-              <div className="flex-shrink-0 px-5 pt-5 pb-3 border-b border-glow-border">
+              <div className="flex-shrink-0 px-5 pt-5 pb-3" style={{ borderBottom: '1px solid rgba(110,140,130,0.2)' }}>
                 <p className="label-overline">Rhythm</p>
               </div>
               <div className="flex-1 overflow-y-auto px-5 py-4">
@@ -1772,7 +1767,7 @@ export default function DashboardClient({
 
               {/* Insights footer */}
               {monthCompletedCount > 0 && (
-                <div style={{ borderTop: '1px solid #ddd4c4', padding: '12px 20px' }}>
+                <div style={{ borderTop: '1px solid rgba(110,140,130,0.2)', padding: '12px 20px' }}>
                   <p className="label-overline mb-2">This month</p>
                   <div style={{ fontSize: '12px', color: '#6b5c52', lineHeight: 1.7 }}>
                     <p>{monthCompletedCount} ritual{monthCompletedCount !== 1 ? 's' : ''} completed</p>

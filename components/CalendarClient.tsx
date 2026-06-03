@@ -252,12 +252,11 @@ export default function CalendarClient({
                 {dayOverlay.items.map((item, idx) => {
                   const catColor = getCategoryColor(item.categoryName).dot;
                   return (
-                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', borderLeft: `2px solid ${catColor}`, paddingLeft: '10px' }}>
                       {item.kept
                         ? <span style={{ color: '#6e8c82', fontSize: '14px' }}>✓</span>
                         : <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#6e8c82', display: 'inline-block' }} />
                       }
-                      <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: catColor, flexShrink: 0 }} />
                       <span style={{ fontSize: '13px', color: '#352720' }}>{item.name}</span>
                     </div>
                   );
