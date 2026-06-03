@@ -1515,7 +1515,7 @@ export default function TaskForm({
 
       {/* Actions */}
       <div className="flex gap-3 pt-2">
-        <button type="button" onClick={() => router.back()} className="flex-1 border border-glow-border text-warm-mid text-sm rounded-pill py-2.5 hover:bg-taupe transition-colors">Cancel</button>
+        <button type="button" onClick={() => router.push(isEdit ? `/tasks/${taskId}` : '/library')} className="flex-1 border border-glow-border text-warm-mid text-sm rounded-pill py-2.5 hover:bg-taupe transition-colors">Cancel</button>
         <button
           type="submit"
           disabled={loading}

@@ -3,6 +3,10 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { getCategoryColor, getCategoryIcon } from '@/lib/categoryColors';
+
+// Mirrors the "Maintain Something" grid on /add — same labels, icons, colors.
+const BROWSE_CATEGORIES = ['Hair', 'Skin', 'Nails', 'Brows & Lashes', 'Hair Removal', 'Wellness'];
 
 const CADENCE_OPTIONS = [
   { label: 'Every week',    days: 7 },
@@ -35,6 +39,7 @@ export function RitualLibraryClient({ tasks }: { tasks: any[] }) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [selected, setSelected] = useState<any>(null);
   const [query, setQuery]         = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [cadenceIndex, setCadenceIndex] = useState<number | null>(null);
   const [customDays, setCustomDays]     = useState('');
   const [saving, setSaving]             = useState(false);
@@ -47,17 +52,9 @@ export function RitualLibraryClient({ tasks }: { tasks: any[] }) {
       )
     : tasks;
 
-  // Category sections shown when there's no active search.
-  const groupedByCategory = (() => {
-    const map = new Map<string, typeof tasks>();
-    for (const t of tasks) {
-      const cat = t.category ?? 'Other';
-      const arr = map.get(cat) ?? [];
-      arr.push(t);
-      map.set(cat, arr);
-    }
-    return [...map.entries()].map(([category, items]) => ({ category, items }));
-  })();
+  const inCategory = selectedCategory
+    ? tasks.filter(t => t.category === selectedCategory)
+    : [];
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function handleSelectTask(task: any) {
@@ -260,30 +257,72 @@ export function RitualLibraryClient({ tasks }: { tasks: any[] }) {
         }}
       />
 
-      {filtered.length === 0 && (
-        <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontStyle: 'italic', fontSize: '16px', color: 'var(--ink-faint)', padding: '24px 0', textAlign: 'center' }}>
-          No rituals found.
-        </p>
+      {/* Searching → flat result list across all categories */}
+      {query.trim() && (
+        <div>
+          {filtered.length === 0 ? (
+            <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontStyle: 'italic', fontSize: '16px', color: 'var(--ink-faint)', padding: '24px 0', textAlign: 'center' }}>
+              No rituals found.
+            </p>
+          ) : (
+            filtered.map((task, i) => (
+              <RitualRow key={task.id} task={task} showDivider={i > 0} onSelect={handleSelectTask} />
+            ))
+          )}
+        </div>
       )}
 
-      {/* No search → grouped category sections. Searching → flat result list. */}
-      {query.trim() ? (
-        <div>
-          {filtered.map((task, i) => (
-            <RitualRow key={task.id} task={task} showDivider={i > 0} onSelect={handleSelectTask} />
-          ))}
+      {/* No search, no category → category tile grid (mirrors Maintain Something) */}
+      {!query.trim() && !selectedCategory && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+          {BROWSE_CATEGORIES.map(cat => {
+            const catColor = getCategoryColor(cat);
+            const Icon = getCategoryIcon(cat);
+            return (
+              <button
+                key={cat}
+                onClick={() => setSelectedCategory(cat)}
+                style={{
+                  backgroundColor: 'var(--paper-soft)',
+                  borderRadius: '12px',
+                  border: '1px solid var(--divider)',
+                  borderTop: `3px solid ${catColor.dot}`,
+                  padding: '14px 12px',
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
+              >
+                <Icon size={20} color={catColor.dot} strokeWidth={1.5} />
+                <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', color: 'var(--ink)' }}>{cat}</span>
+              </button>
+            );
+          })}
         </div>
-      ) : (
-        groupedByCategory.map(({ category, items }) => (
-          <section key={category} style={{ marginBottom: '24px' }}>
-            <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '10px', letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '4px' }}>
-              {category}
+      )}
+
+      {/* No search, category selected → filtered list with back option */}
+      {!query.trim() && selectedCategory && (
+        <div>
+          <button
+            onClick={() => setSelectedCategory(null)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'Inter, sans-serif', fontSize: '13px', color: 'var(--sage)', marginBottom: '12px', padding: 0 }}
+          >
+            ← All categories
+          </button>
+          {inCategory.length === 0 ? (
+            <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontStyle: 'italic', fontSize: '16px', color: 'var(--ink-faint)', padding: '24px 0', textAlign: 'center' }}>
+              No rituals in {selectedCategory} yet.
             </p>
-            {items.map((task, i) => (
+          ) : (
+            inCategory.map((task, i) => (
               <RitualRow key={task.id} task={task} showDivider={i > 0} onSelect={handleSelectTask} />
-            ))}
-          </section>
-        ))
+            ))
+          )}
+        </div>
       )}
     </main>
   );
