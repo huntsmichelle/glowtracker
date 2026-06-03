@@ -36,7 +36,7 @@ export default async function RoutinesListPage() {
       : Promise.resolve({ data: [] }),
     supabase
       .from('routines')
-      .select('id, name, template_description, template_task_count, template_category, color')
+      .select('id, name, template_description, template_task_count, template_category, color, routine_type')
       .eq('is_system_template', true)
       .order('name'),
   ]);
@@ -57,7 +57,10 @@ export default async function RoutinesListPage() {
     pending_conflicts: conflictCounts[r.id] ?? 0,
   }));
 
-  const systemTemplates = (systemTemplatesRes.data ?? []) as TemplateItem[];
+  // Exclude event-prep templates from the default gallery (still browsable
+  // via the dedicated template library). null-safe — keeps untyped templates.
+  const systemTemplates = ((systemTemplatesRes.data ?? []) as (TemplateItem & { routine_type?: string | null })[])
+    .filter(t => t.routine_type !== 'event_prep');
 
   return (
     <div className="max-w-2xl mx-auto px-5 py-8 space-y-8">

@@ -90,6 +90,22 @@ function getGreeting(dueCount: number, pastWindowCount: number): string {
   return 'A few rituals need your attention.';
 }
 
+// Rotating editorial lines shown when nothing is due or past window.
+const QUIET_GREETINGS = [
+  "You're showing up for yourself.",
+  'Nothing pressing today.',
+  "Everything's on track.",
+  'A quiet week ahead.',
+  'The dates are handled.',
+  "You're keeping up.",
+];
+const SPECIAL_GREETING = "You're on the list too.";
+
+function getQuietGreeting(): string {
+  if (Math.random() < 0.1) return SPECIAL_GREETING;
+  return QUIET_GREETINGS[Math.floor(Math.random() * QUIET_GREETINGS.length)];
+}
+
 function getDateOverline(): string {
   const d = new Date();
   const day  = d.toLocaleDateString('en-US', { weekday: 'long' }).toUpperCase();
@@ -151,6 +167,8 @@ export default function DashboardClient({
   longestMaintained = null,
 }: Props) {
   const [instances, setInstances] = useState(initial);
+  // Stable per-mount quiet greeting (won't re-roll on every render)
+  const [quietGreeting] = useState(() => getQuietGreeting());
 
   // ── Suggestions ────────────────────────────────────────────────────────────
   const [conflicts, setConflicts]   = useState<Suggestion[]>([]);
@@ -1613,7 +1631,9 @@ export default function DashboardClient({
   // ROOT RENDER
   // ─────────────────────────────────────────────────────────────────────────
 
-  const greeting = getGreeting(readyCount, pastWindowCount);
+  const greeting = (readyCount + pastWindowCount) === 0
+    ? quietGreeting
+    : getGreeting(readyCount, pastWindowCount);
   const dateOverline = getDateOverline();
   const totalConflicts = Object.values(conflictCounts).reduce((s, n) => s + n, 0);
 
@@ -1684,21 +1704,21 @@ export default function DashboardClient({
                   <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '22px', color: '#352720', fontWeight: 400, lineHeight: 1 }}>
                     {weekCompleted}
                   </p>
-                  <p style={{ fontSize: '9px', color: '#a8998e', marginTop: '4px', letterSpacing: '0.12em', textTransform: 'uppercase' }}>completed</p>
+                  <p style={{ fontSize: '9px', color: '#a8998e', marginTop: '4px', letterSpacing: '0.12em', textTransform: 'uppercase' }}>kept</p>
                   <p style={{ fontSize: '9px', color: '#a8998e', marginTop: '1px' }}>this week</p>
                 </div>
                 <div style={{ textAlign: 'center' }}>
                   <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '22px', color: '#6e8c82', fontWeight: 400, lineHeight: 1 }}>
                     {readyCount}
                   </p>
-                  <p style={{ fontSize: '9px', color: '#a8998e', marginTop: '4px', letterSpacing: '0.12em', textTransform: 'uppercase' }}>ready</p>
+                  <p style={{ fontSize: '9px', color: '#a8998e', marginTop: '4px', letterSpacing: '0.12em', textTransform: 'uppercase' }}>due</p>
                   <p style={{ fontSize: '9px', color: '#a8998e', marginTop: '1px' }}>this week</p>
                 </div>
                 <div style={{ textAlign: 'center' }}>
                   <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '22px', fontWeight: 400, lineHeight: 1, color: pastWindowCount > 0 ? '#c08a6e' : '#a8998e' }}>
                     {pastWindowCount}
                   </p>
-                  <p style={{ fontSize: '9px', color: '#a8998e', marginTop: '4px', letterSpacing: '0.12em', textTransform: 'uppercase' }}>past window</p>
+                  <p style={{ fontSize: '9px', color: '#a8998e', marginTop: '4px', letterSpacing: '0.12em', textTransform: 'uppercase' }}>past</p>
                   <p style={{ fontSize: '9px', color: '#a8998e', marginTop: '1px' }}>this week</p>
                 </div>
               </div>
@@ -2011,9 +2031,9 @@ export default function DashboardClient({
           backgroundColor: 'var(--ink)',
           color: 'var(--cream)',
           fontFamily: 'Inter, sans-serif',
-          fontSize: '13px',
+          fontSize: '12px',
           fontWeight: 500,
-          padding: '10px 14px',
+          padding: '12px',
           borderRadius: '100px',
           textDecoration: 'none',
           boxShadow: '0 4px 20px rgba(53,39,32,0.15)',
