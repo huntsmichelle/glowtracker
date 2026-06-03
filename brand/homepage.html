@@ -148,6 +148,25 @@
       transition: background 0.15s ease;
     }
     .hero-launch:hover { background: #3d3830; }
+    .show-me-link {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-family: 'EB Garamond', serif;
+      font-size: 17px;
+      font-style: italic;
+      color: var(--sage);
+      letter-spacing: 0.01em;
+      padding: 0;
+      margin-top: 4px;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      text-decoration-color: rgba(142,163,148,.4);
+      transition: color 0.15s ease;
+    }
+    .show-me-link:hover { color: var(--green); }
+    .show-me-light { color: rgba(244,239,227,.45); text-decoration-color: rgba(244,239,227,.2); margin-top: 16px; }
+    .show-me-light:hover { color: rgba(244,239,227,.75); }
     .hero-fine {
       font-family: 'Inter', sans-serif;
       font-size: 11px;
@@ -382,6 +401,36 @@
     .reveal-d1 { transition-delay: 0.08s; }
     .reveal-d2 { transition-delay: 0.16s; }
 
+    /* ── Video modal ────────────────────────────────── */
+    .video-modal-backdrop {
+      position: fixed; inset: 0; z-index: 200;
+      background: rgba(22,20,15,.82);
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.35s ease;
+    }
+    .video-modal-backdrop.open { opacity: 1; pointer-events: auto; }
+    .video-modal-shell {
+      width: min(375px, 92vw, calc(90vh * 375 / 812));
+      aspect-ratio: 375 / 812;
+      border-radius: 34px;
+      overflow: hidden;
+      box-shadow: 0 0 0 1.5px #2a2820, 0 40px 100px rgba(0,0,0,.7);
+      transform: translateY(24px) scale(0.96);
+      transition: transform 0.4s cubic-bezier(.22,.68,0,1.1);
+    }
+    .video-modal-backdrop.open .video-modal-shell { transform: translateY(0) scale(1); }
+    .video-modal-shell iframe { width: 100%; height: 100%; border: none; display: block; }
+    .video-modal-close {
+      position: absolute; top: 20px; right: 20px;
+      width: 40px; height: 40px; border-radius: 50%;
+      background: rgba(244,239,227,.12); border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      color: rgba(244,239,227,.7); font-size: 20px; line-height: 1;
+      transition: background 0.15s ease;
+    }
+    .video-modal-close:hover { background: rgba(244,239,227,.22); }
+
     /* ── Responsive ─────────────────────────────────── */
     @media (max-width: 900px) {
       .event-inner { grid-template-columns: 1fr; gap: 40px; }
@@ -401,12 +450,17 @@
 <body>
 
 <!-- ── Nav ──────────────────────────────────────────── -->
+<!-- Video modal -->
+<div class="video-modal-backdrop" id="video-modal">
+  <button class="video-modal-close" id="modal-close-btn" aria-label="Close">×</button>
+  <div class="video-modal-shell">
+    <iframe id="video-iframe" src="" title="tend, too preview" allowfullscreen></iframe>
+  </div>
+</div>
+
 <nav id="main-nav">
   <span class="tt-wordmark nav-wordmark">tend<span class="tt-comma">,</span><span class="tt-too">too</span></span>
-  <span style="display:inline-flex;align-items:center;">
-    <a href="/login" style="font-family:'Inter',sans-serif;font-size:12px;color:var(--muted);text-decoration:none;margin-right:16px;">Sign in</a>
-    <a class="nav-btn" href="Onboarding Screen 1.html">Get started</a>
-  </span>
+  <a class="nav-btn" href="/waitlist">Get started</a>
 </nav>
 
 <!-- ── Hero ─────────────────────────────────────────── -->
@@ -416,7 +470,10 @@
   <p class="hero-tagline">Because you're also on the list.</p>
   <div class="hero-rule"></div>
   <p class="hero-desc">Life has maintenance requirements.<br><em>You deserve to be included in them.</em></p>
-  <a class="hero-launch" href="Onboarding Screen 1.html">Get early access</a>
+  <div style="display:flex;flex-direction:column;align-items:center;gap:14px;">
+    <a class="hero-launch" href="/waitlist">Get early access</a>
+    <button class="show-me-link" onclick="openVideoModal()">Show me how it works</button>
+  </div>
   <p class="hero-fine">Takes two minutes. No commitment.</p>
 </section>
 
@@ -500,7 +557,10 @@
     You have enough<br>to remember.<br><em>Let us carry this part.</em>
   </div>
   <p class="cta-sub reveal reveal-d1">tend, too is coming. Be one of the first.</p>
-  <a class="cta-launch reveal reveal-d2" href="Onboarding Screen 1.html">Get started</a>
+  <div class="reveal reveal-d2" style="display:flex;flex-direction:column;align-items:center;gap:16px;">
+    <a class="cta-launch" href="/waitlist">Get started</a>
+    <button class="show-me-link show-me-light" onclick="openVideoModal()">Show me how it works</button>
+  </div>
 </section>
 
 <!-- ── Footer ────────────────────────────────────────── -->
@@ -510,6 +570,29 @@
 </footer>
 
 <script>
+  // Video modal
+  function openVideoModal() {
+    var modal = document.getElementById('video-modal');
+    var iframe = document.getElementById('video-iframe');
+    iframe.src = 'Onboarding Preview Video.html';
+    modal.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeVideoModal() {
+    var modal = document.getElementById('video-modal');
+    var iframe = document.getElementById('video-iframe');
+    modal.classList.remove('open');
+    document.body.style.overflow = '';
+    setTimeout(function () { iframe.src = ''; }, 400);
+  }
+  document.getElementById('modal-close-btn').addEventListener('click', closeVideoModal);
+  document.getElementById('video-modal').addEventListener('click', function (e) {
+    if (e.target === this) closeVideoModal();
+  });
+  window.addEventListener('message', function (e) {
+    if (e.data && e.data.type === 'close-video') closeVideoModal();
+  });
+
   // Nav scroll border
   var nav = document.getElementById('main-nav');
   window.addEventListener('scroll', function () {
