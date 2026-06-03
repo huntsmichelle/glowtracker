@@ -106,8 +106,8 @@ AUDIT_LOG.md          Phase 3 audit log
 - `tasks.frequency_type` — `'interval'` | `'daily'` | `'twice_daily'`
 - `tasks.mode` — `'recurring'` | `'countdown'`
 - `tasks.autocomplete_enabled` — UI label: "Make this a habit"
-- `instances.status` — `'upcoming'` | `'projected'` | `'completed'` | `'skipped'` | `'ready_for_refresh'`
-- `instances.archived` — BOOLEAN default FALSE. ALL queries must filter `.eq('archived', false)`
+- `instances.status` — `'upcoming'` | `'due'` | `'projected'` | `'completed'` | `'skipped'` | `'snoozed'` (no `'ready_for_refresh'` — that is UI terminology only, not a stored value)
+- `instances.is_projected` — BOOLEAN. Projected (forecast) rows carry `status='projected'` AND `is_projected=true` together. Actionable rows: `status='upcoming'`, `is_projected=false`. There is NO `archived` column.
 - `instances.generated_by_link_id` — UUID, set when auto-generated via linked task
 - `instances.auto_completed` — BOOLEAN, set when autocomplete fires
 - `routines.conflict_intent` — `'unset'` | `'independent'` | `'managed'`
@@ -221,7 +221,7 @@ Always use `getCategoryColor()` from `lib/categoryColors.ts`.
 8. One batch upsert over multiple sequential upserts
 9. System templates read-only — copies only
 10. No red — use `--refresh` terracotta for alerts
-11. All instance queries must include `.eq('archived', false)`
+11. To list actionable instances, filter `.eq('is_projected', false)` (exclude forecasts); there is no `archived` column to filter on
 12. Product tracking failure never blocks marking a ritual kept
 13. Always-together linked tasks skip conflict detection
 14. `processInstanceKept()` runs after instance marked kept, not before
