@@ -30,11 +30,13 @@ export const colors = {
   marigoldLt:   'rgba(212, 184, 112, 0.10)',
   plum:         '#9D91B5',   // soft muted purple — Makeup category
   plumLt:       'rgba(157, 145, 181, 0.10)',
+  mist:         '#c8ddd6',   // soft cool mint — Nails category
+  mistLt:       'rgba(200, 221, 214, 0.10)',
 
   // ── Category dots (semantic aliases — kept for compat) ───────
   categorySkin:        '#93a3b1',
   categoryHair:        '#d4a478',
-  categoryNails:       '#c08a6e',
+  categoryNails:       '#c8ddd6',
   categoryTreatments:  '#d4a478',
   categoryBody:        '#d4b870',
   categoryBrowsLashes: '#d4a8a0',

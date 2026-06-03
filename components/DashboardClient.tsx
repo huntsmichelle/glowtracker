@@ -2013,7 +2013,7 @@ export default function DashboardClient({
           fontFamily: 'Inter, sans-serif',
           fontSize: '13px',
           fontWeight: 500,
-          padding: '12px 16px',
+          padding: '10px 14px',
           borderRadius: '100px',
           textDecoration: 'none',
           boxShadow: '0 4px 20px rgba(53,39,32,0.15)',
