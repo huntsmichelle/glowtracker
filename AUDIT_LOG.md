@@ -12,6 +12,8 @@
 
 **Reviewed tables (16 total):** profiles, categories, products, tasks, instances, task_products, prep_steps, linked_tasks, link_resolution_rules, service_providers, routines, routine_task_pairs, routine_conflicts, common_tasks, common_task_relationships, user_suggestion_dismissals
 
+> Note: `linked_tasks` and `link_resolution_rules` were later consolidated onto `routine_task_pairs` / `routine_conflicts` and dropped (migration 000004). They were empty and unreferenced at drop time.
+
 **Result:** All 16 tables have RLS enabled with appropriate policies.
 - User-owned tables: `user_id = auth.uid()` FOR ALL ✓
 - System templates: read-only SELECT for all authenticated users ✓

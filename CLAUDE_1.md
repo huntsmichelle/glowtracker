@@ -78,8 +78,8 @@ AUDIT_LOG.md          Phase 3 audit log — check for context on security/perf w
 | `common_tasks` | Reference database of known tasks |
 | `common_task_relationships` | Known conflict/sync pairs |
 | `user_suggestion_dismissals` | Dismissed suggestion prompts |
-| `linked_tasks` | Cross-task relationships |
-| `link_resolution_rules` | Rules for linked task conflicts |
+| ~~`linked_tasks`~~ | Removed — consolidated onto `routine_task_pairs` / `routine_conflicts` and dropped (migration 000004) |
+| ~~`link_resolution_rules`~~ | Removed — consolidated onto `routine_task_pairs` / `routine_conflicts` and dropped (migration 000004) |
 | `prep_steps` | Prep step records |
 
 ### Key column notes

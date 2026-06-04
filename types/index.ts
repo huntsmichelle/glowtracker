@@ -251,24 +251,10 @@ export interface Instance {
   stub_date: string | null;
   // Set to true when marked kept automatically via autocomplete
   auto_completed: boolean;
-  // Tracks which linked_tasks row generated this instance (always_together)
-  generated_by_link_id: string | null;
   created_at: string;
   updated_at: string;
   // joined
   task?: Task;
-}
-
-export interface LinkedTask {
-  id: string;
-  user_id: string;
-  task_a_id: string;
-  task_b_id: string;
-  link_type: LinkType;
-  occurrence_interval: number;
-  primary_task_id: string | null;
-  occurrence_count: number;
-  created_at: string;
 }
 
 export interface Product {
