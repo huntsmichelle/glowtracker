@@ -1639,6 +1639,11 @@ export default function DashboardClient({
   const dateOverline = getDateOverline();
   const totalConflicts = Object.values(conflictCounts).reduce((s, n) => s + n, 0);
 
+  // Soonest upcoming ritual, for the hero "Next" block
+  const nextInst = [...instances]
+    .filter(i => i.status !== 'completed' && i.status !== 'skipped')
+    .sort((a, b) => a.due_date_start.localeCompare(b.due_date_start))[0];
+
   return (
     <>
       {/* ── Desktop: header + three equal cards ──────────────────────────── */}
@@ -1724,6 +1729,21 @@ export default function DashboardClient({
                 {greeting}
               </p>
             </div>
+
+            {/* Next block — soonest upcoming ritual */}
+            {nextInst && (
+              <div className="flex-shrink-0" style={{ padding: '16px 24px 18px', borderTop: '1px solid var(--card-sage-border)' }}>
+                <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '9px', fontWeight: 600, color: 'var(--card-sage-accent)', textTransform: 'uppercase', letterSpacing: '0.16em' }}>
+                  Next
+                </p>
+                <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '24px', fontWeight: 500, color: '#2b2823', lineHeight: 1.15, marginTop: '4px' }}>
+                  {nextInst.task?.name ?? '—'}
+                </p>
+                <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', fontWeight: 400, color: 'var(--card-sage-sub)', marginTop: '2px' }}>
+                  {format(parseISO(nextInst.due_date_start), 'EEE, MMM d')}
+                </p>
+              </div>
+            )}
 
             {/* Ritual list */}
             <div className="flex-1 overflow-y-auto" style={{ borderTop: '1px solid var(--card-sage-border)' }}>

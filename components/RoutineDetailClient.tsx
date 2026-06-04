@@ -3,10 +3,10 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { format, parseISO } from 'date-fns';
 import { createClient } from '@/lib/supabase/client';
 import { detectRoutineConflicts } from '@/lib/conflictDetection';
 import ConflictModal, { type ConflictWithJoins } from '@/components/ConflictModal';
-import LinkRulesPanel from '@/components/LinkRulesPanel';
 import RoutineTimeline from '@/components/RoutineTimeline';
 import InlineTaskForm from '@/components/InlineTaskForm';
 import type { Routine, Task, Category, ConflictIntent, ConflictResolution, DelayTarget, AdjustDirection, SkipTarget, NoConflictOrder } from '@/types';
@@ -83,7 +83,6 @@ export default function RoutineDetailClient({
   const [localConflicts, setLocalConflicts] = useState<ConflictWithJoins[]>(conflicts);
   const [showAddTask, setShowAddTask] = useState(false);
   const [addTaskTab, setAddTaskTab] = useState<AddTaskTab>('existing');
-  const [showLinkRules, setShowLinkRules] = useState(false);
   const [showConfiguredPairs, setShowConfiguredPairs] = useState(false);
   const [removingTaskId, setRemovingTaskId] = useState<string | null>(null);
   const [addingTaskId, setAddingTaskId] = useState<string | null>(null);
@@ -96,6 +95,36 @@ export default function RoutineDetailClient({
   const [slideOverTask, setSlideOverTask] = useState<Task | null>(null);
 
   const noInstanceSet = new Set(tasksWithNoInstances);
+
+  // ── Routine-level category (editable via category_id FK) ──
+  const [categoryId, setCategoryId] = useState<string | null>(routine.category_id ?? null);
+  const [savingCategory, setSavingCategory] = useState(false);
+  async function handleCategoryChange(newId: string) {
+    const val = newId || null;
+    setCategoryId(val);
+    setSavingCategory(true);
+    const supabase = createClient();
+    await supabase.from('routines').update({ category_id: val }).eq('id', routine.id);
+    setSavingCategory(false);
+    router.refresh();
+  }
+
+  // ── Header / settings derived values ──
+  const nextUp = timelineTasks
+    .flatMap(tt => tt.instances.map(i => ({ date: i.due_date_start, name: tt.name })))
+    .sort((a, b) => a.date.localeCompare(b.date))[0] ?? null;
+  const createdAt = (routine as Routine & { created_at?: string }).created_at ?? null;
+  const activeSince = createdAt ? format(parseISO(createdAt), 'MMMM yyyy') : null;
+  const routineType = (routine as Routine & { routine_type?: string | null }).routine_type ?? null;
+  const routineTypeLabel = routineType
+    ? ({ maintenance: 'Maintenance', event_prep: 'Event prep', goal_based: 'Goal-based' } as Record<string, string>)[routineType] ?? routineType
+    : '—';
+  const manualAnchorTask = tasks.find(t => (t as Task & { initial_anchor_date?: string | null }).initial_anchor_date);
+  const manualAnchorDate = manualAnchorTask
+    ? (manualAnchorTask as Task & { initial_anchor_date?: string | null }).initial_anchor_date ?? null
+    : null;
+  // Configured (non-'ask') conflict rules — for the summary card
+  const configuredRuleCount = pairs.filter(p => p.default_resolution !== 'ask').length;
 
   useEffect(() => { setLocalConflicts(conflicts); }, [conflicts]);
 
@@ -319,6 +348,13 @@ export default function RoutineDetailClient({
             {routine.description && (
               <p className="text-sm text-warm-mid mt-0.5">{routine.description}</p>
             )}
+            <p className="text-xs text-warm-mid mt-1">
+              {tasks.length} ritual{tasks.length !== 1 ? 's' : ''}
+              {nextUp ? ` · Next: ${nextUp.name}, ${format(parseISO(nextUp.date), 'MMM d')}` : ''}
+            </p>
+            {activeSince && (
+              <p className="text-xs text-warm-light mt-0.5">Active since {activeSince}</p>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-3 ml-3 flex-shrink-0">
@@ -395,7 +431,7 @@ export default function RoutineDetailClient({
                       </span>
                     </div>
                     <button
-                      onClick={() => setShowLinkRules(true)}
+                      onClick={() => router.push(`/routines/${routine.id}/conflicts`)}
                       className="text-xs text-warm-light hover:text-charcoal flex-shrink-0 ml-3"
                     >
                       Edit rule
@@ -414,7 +450,7 @@ export default function RoutineDetailClient({
           <p className="text-sm text-charcoal flex-1">{suggestionBanner}</p>
           <div className="flex gap-2 flex-shrink-0">
             <button
-              onClick={() => { setShowLinkRules(true); setSuggestionBanner(null); }}
+              onClick={() => { setSuggestionBanner(null); router.push(`/routines/${routine.id}/conflicts`); }}
               className="text-xs font-medium bg-charcoal text-cream rounded-pill px-3 py-1.5 hover:bg-charcoal/90"
             >
               Set overlap rule
@@ -567,6 +603,49 @@ export default function RoutineDetailClient({
         )}
       </section>
 
+      {/* Routine settings — group-level only */}
+      <section>
+        <p className="label-overline mb-3">Settings</p>
+        <div className="space-y-3">
+          {/* Category — editable via category_id FK */}
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm text-warm-mid">Category</span>
+            <select
+              value={categoryId ?? ''}
+              onChange={e => handleCategoryChange(e.target.value)}
+              disabled={savingCategory}
+              className="border border-glow-border rounded-md px-3 py-1.5 text-sm bg-stone text-charcoal max-w-[60%] disabled:opacity-50"
+            >
+              <option value="">Unset</option>
+              {categories.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+          {/* Routine type — read only */}
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm text-warm-mid">Type</span>
+            <span className="text-sm text-charcoal">{routineTypeLabel}</span>
+          </div>
+          {/* Start point — display only */}
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm text-warm-mid">Start point</span>
+            <span className="text-sm text-charcoal text-right">
+              {manualAnchorDate
+                ? `Manual · ${format(parseISO(manualAnchorDate), 'MMM d, yyyy')}`
+                : 'First ritual completion'}
+            </span>
+          </div>
+          {/* Event target — HELD: display only, no edit (events redesign pending) */}
+          {routineType === 'event_prep' && (
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm text-warm-mid">Event target</span>
+              <span className="text-xs text-warm-light text-right">Set on the ritual — editing held</span>
+            </div>
+          )}
+        </div>
+      </section>
+
       {/* Overlap preferences — intent selector or rules panel */}
       {hasMultipleTasks && (
         <section>
@@ -616,7 +695,7 @@ export default function RoutineDetailClient({
                   <p className="text-xs text-warm-mid flex-1 leading-relaxed">{hint.text}</p>
                   {hint.pairKey && (
                     <button
-                      onClick={() => { setConflictIntent('managed'); setShowLinkRules(true); }}
+                      onClick={() => router.push(`/routines/${routine.id}/conflicts`)}
                       className="text-xs text-warm-light hover:text-charcoal flex-shrink-0 underline underline-offset-2"
                     >
                       Set a preference
@@ -627,25 +706,18 @@ export default function RoutineDetailClient({
             </div>
           )}
 
-          {/* Rules panel — only when managed */}
+          {/* Rules relocated to /routines/[id]/conflicts — summary + manage link */}
           {conflictIntent === 'managed' && (
-            <div className="space-y-3">
-              <button
-                onClick={() => setShowLinkRules(v => !v)}
-                className="flex items-center justify-between w-full text-left"
-              >
-                <span className="text-sm text-warm-mid">Overlap Rules</span>
-                <span className="text-xs text-warm-light">{showLinkRules ? 'hide' : 'show'}</span>
-              </button>
-              {showLinkRules && (
-                <LinkRulesPanel
-                  key={tasks.map(t => t.id).sort().join(',')}
-                  routineId={routine.id}
-                  userId={userId}
-                  onRulesSaved={() => { refreshConflicts(); router.refresh(); }}
-                />
-              )}
-            </div>
+            <Link
+              href={`/routines/${routine.id}/conflicts`}
+              className="flex items-center justify-between bg-stone border border-glow-border rounded-lg px-4 py-3 hover:border-warm-light transition-colors"
+              style={{ textDecoration: 'none' }}
+            >
+              <span className="text-sm text-charcoal">
+                {configuredRuleCount} rule{configuredRuleCount !== 1 ? 's' : ''} configured
+              </span>
+              <span className="text-sm text-warm-mid">Manage →</span>
+            </Link>
           )}
 
           {/* Change-of-intent ghost links */}
