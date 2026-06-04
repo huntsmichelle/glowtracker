@@ -519,10 +519,10 @@ export default function RoutineDetailClient({
                   key={t.id}
                   style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 0', borderBottom: '1px solid #cdc6b6', gap: '12px' }}
                 >
-                  <button
-                    type="button"
-                    onClick={() => setSlideOverTask(t)}
-                    style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: 0 }}
+                  {/* Tap a ritual → existing ritual edit form (no inline edit) */}
+                  <Link
+                    href={`/tasks/${t.id}/edit`}
+                    style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1, textDecoration: 'none' }}
                   >
                     <span style={{ width: '8px', height: '8px', borderRadius: '50%', flexShrink: 0, backgroundColor: getCategoryColor(catName).dot }} />
                     <div style={{ minWidth: 0 }}>
@@ -531,7 +531,8 @@ export default function RoutineDetailClient({
                         {catName ? `${catName} · ` : ''}{intervalLabel}
                       </p>
                     </div>
-                  </button>
+                    <span style={{ fontSize: '14px', color: '#a8a297', flexShrink: 0 }}>›</span>
+                  </Link>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                     {needsSetup && (
                       <Link

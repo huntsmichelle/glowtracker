@@ -18,6 +18,13 @@
   --plum:        #9D91B5;
   --mist:        #c8ddd6;   /* soft cool mint — Nails category */
 
+  /* Today hero card — soft sage wash (NOT the saturated --sage) */
+  --card-sage-bg:     #d9e2d8;   /* card fill */
+  --card-sage-border: #c7d4c5;   /* border + internal dividers */
+  --card-sage-accent: #6e8478;   /* kickers, labels */
+  --card-sage-status: #5e7466;   /* italic status line */
+  --card-sage-sub:    #88958a;   /* sub-labels, dates */
+
   /* Legacy aliases (keep for backward compat while migrating) */
   --color-bg-base:        #f3ecd9;
   --color-bg-surface:     #faf4e6;

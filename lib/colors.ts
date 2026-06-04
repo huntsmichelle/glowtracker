@@ -33,6 +33,13 @@ export const colors = {
   mist:         '#c8ddd6',   // soft cool mint — Nails category
   mistLt:       'rgba(200, 221, 214, 0.10)',
 
+  // ── Today hero card — soft sage wash (NOT the saturated `sage`) ──
+  cardSageBg:     '#d9e2d8',   // card fill
+  cardSageBorder: '#c7d4c5',   // border + internal dividers
+  cardSageAccent: '#6e8478',   // kickers, labels
+  cardSageStatus: '#5e7466',   // italic status line
+  cardSageSub:    '#88958a',   // sub-labels, dates
+
   // ── Category dots (semantic aliases — kept for compat) ───────
   categorySkin:        '#93a3b1',
   categoryHair:        '#d4a478',

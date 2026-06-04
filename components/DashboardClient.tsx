@@ -1684,45 +1684,49 @@ export default function DashboardClient({
         {/* Three equal cards */}
         <div className="flex-1 min-h-0 flex gap-5 px-8 py-6">
 
-          {/* Card: In sequence */}
+          {/* Card: In sequence — Today hero (soft sage wash) */}
           <div
-            className="flex-1 min-w-0 flex flex-col rounded-2xl overflow-hidden"
-            style={{ boxShadow: '0 1px 3px rgba(53,39,32,0.06)', backgroundColor: 'rgba(110,140,130,0.06)', border: '1px solid rgba(110,140,130,0.15)' }}
+            className="flex-1 min-w-0 flex flex-col overflow-hidden"
+            style={{ boxShadow: '0 1px 3px rgba(53,39,32,0.06)', backgroundColor: 'var(--card-sage-bg)', border: '1px solid var(--card-sage-border)', borderRadius: '22px' }}
           >
-            {/* Card header */}
-            <div className="flex-shrink-0 px-5 pt-5 pb-3 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(110,140,130,0.2)' }}>
-              <p className="label-overline">In sequence</p>
+            {/* Card header — kicker + title */}
+            <div className="flex-shrink-0" style={{ padding: '22px 24px 14px' }}>
+              <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '10px', fontWeight: 600, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--card-sage-accent)' }}>
+                Today
+              </p>
+              <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '28px', fontWeight: 500, color: '#2b2823', lineHeight: 1.1, marginTop: '2px' }}>
+                In sequence
+              </p>
             </div>
 
-            {/* Rolling 7-day stat boxes */}
-            <div className="flex-shrink-0 px-5 py-3" style={{ borderBottom: '1px solid rgba(110,140,130,0.2)' }}>
+            {/* Stat row (KEPT / ACTIVE / ATTENTION) — Inter 300 numbers */}
+            <div className="flex-shrink-0" style={{ padding: '0 24px 16px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-                <div style={{ textAlign: 'center' }}>
-                  <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '22px', color: '#352720', fontWeight: 400, lineHeight: 1 }}>
-                    {weekCompleted}
-                  </p>
-                  <p style={{ fontSize: '9px', color: '#a8998e', marginTop: '4px', letterSpacing: '0.12em', textTransform: 'uppercase' }}>kept</p>
-                  <p style={{ fontSize: '9px', color: '#a8998e', marginTop: '1px' }}>this week</p>
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                  <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '22px', color: '#6e8c82', fontWeight: 400, lineHeight: 1 }}>
-                    {readyCount}
-                  </p>
-                  <p style={{ fontSize: '9px', color: '#a8998e', marginTop: '4px', letterSpacing: '0.12em', textTransform: 'uppercase' }}>active</p>
-                  <p style={{ fontSize: '9px', color: '#a8998e', marginTop: '1px' }}>this week</p>
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                  <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '22px', fontWeight: 400, lineHeight: 1, color: pastWindowCount > 0 ? '#c08a6e' : '#a8998e' }}>
-                    {pastWindowCount}
-                  </p>
-                  <p style={{ fontSize: '9px', color: '#a8998e', marginTop: '4px', letterSpacing: '0.12em', textTransform: 'uppercase' }}>attention</p>
-                  <p style={{ fontSize: '9px', color: '#a8998e', marginTop: '1px' }}>this week</p>
-                </div>
+                {([
+                  { n: weekCompleted, label: 'kept' },
+                  { n: readyCount, label: 'active' },
+                  { n: pastWindowCount, label: 'attention' },
+                ] as const).map(s => (
+                  <div key={s.label} style={{ textAlign: 'center' }}>
+                    <p style={{ fontFamily: 'Inter, sans-serif', fontWeight: 300, fontSize: '34px', color: '#2b2823', lineHeight: 1 }}>
+                      {s.n}
+                    </p>
+                    <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '9px', fontWeight: 600, color: 'var(--card-sage-accent)', marginTop: '6px', letterSpacing: '0.12em', textTransform: 'uppercase' }}>{s.label}</p>
+                    <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '10px', fontWeight: 400, color: 'var(--card-sage-sub)', marginTop: '1px' }}>this week</p>
+                  </div>
+                ))}
               </div>
             </div>
 
+            {/* Status line — state-driven */}
+            <div className="flex-shrink-0" style={{ padding: '14px 24px', borderTop: '1px solid var(--card-sage-border)' }}>
+              <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontStyle: 'italic', fontSize: '19px', color: 'var(--card-sage-status)', textAlign: 'center', lineHeight: 1.2 }}>
+                {greeting}
+              </p>
+            </div>
+
             {/* Ritual list */}
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto" style={{ borderTop: '1px solid var(--card-sage-border)' }}>
               {InSequenceList()}
             </div>
           </div>
