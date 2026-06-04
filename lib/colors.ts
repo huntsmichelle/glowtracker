@@ -50,8 +50,9 @@ export const colors = {
   categoryHairRemoval: '#d4b870',
   categoryMakeup:      '#9D91B5',
   categoryWellness:    '#c4918a',
-  categoryDefault:     '#6B7280',   // unset/uncategorized fallback (mirrors mobile)
+  categoryDefault:     '#a8998e',   // uncategorized category-dot fallback (warm)
   routineDefault:      '#a6adc5',   // routines.color DB default (retired #EC4899)
+  routineCategoryUnset:'#6B7280',   // null routines.category_id — "unset" display only
 } as const;
 
 export type ColorName = keyof typeof colors;

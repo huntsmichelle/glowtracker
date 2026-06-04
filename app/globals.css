@@ -26,8 +26,8 @@
   --card-sage-sub:    #88958a;   /* sub-labels, dates */
 
   /* Defaults (mirror mobile / live schema) */
-  --category-default: #6B7280;   /* unset/uncategorized fallback */
-  --routine-default:  #a6adc5;   /* routines.color DB default (retired #EC4899) */
+  --routine-default:        #a6adc5;   /* routines.color DB default (retired #EC4899) */
+  --routine-category-unset: #6B7280;   /* null routines.category_id — "unset" display only */
 
   /* Legacy aliases (keep for backward compat while migrating) */
   --color-bg-base:        #f3ecd9;
