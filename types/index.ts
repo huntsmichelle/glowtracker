@@ -31,7 +31,7 @@ export interface Routine {
   user_id: string;
   name: string;
   description: string | null;
-  category: string | null;         // freeform label for grouping
+  category_id: string | null;      // FK to categories(id); null = unset (e.g. event-prep)
   color: string;
   is_template: boolean;
   is_public: boolean;

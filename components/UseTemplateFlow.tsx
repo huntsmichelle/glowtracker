@@ -66,7 +66,7 @@ export default function UseTemplateFlow({
         template_source_id: templateId,
         conflict_intent: 'unset',
       })
-      .select('id, name, color, user_id, description, category, is_template, is_public, is_system_template, template_source_id, template_category, template_description, template_task_count, conflict_intent, created_at, updated_at')
+      .select('id, name, color, user_id, description, category_id, is_template, is_public, is_system_template, template_source_id, template_category, template_description, template_task_count, conflict_intent, created_at, updated_at')
       .single();
 
     if (routineErr || !newRoutine) {

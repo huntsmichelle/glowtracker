@@ -25,6 +25,10 @@
   --card-sage-status: #5e7466;   /* italic status line */
   --card-sage-sub:    #88958a;   /* sub-labels, dates */
 
+  /* Defaults (mirror mobile / live schema) */
+  --category-default: #6B7280;   /* unset/uncategorized fallback */
+  --routine-default:  #a6adc5;   /* routines.color DB default (retired #EC4899) */
+
   /* Legacy aliases (keep for backward compat while migrating) */
   --color-bg-base:        #f3ecd9;
   --color-bg-surface:     #faf4e6;
