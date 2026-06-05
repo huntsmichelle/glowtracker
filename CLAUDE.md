@@ -60,7 +60,7 @@ Read this file completely before doing anything else in a new session.
 --routine-db-default:  #a6adc5;  /* 3. routines.color DB default value (retired #EC4899) */
 
 /* Soft-sage hero card family — NOT the saturated --sage */
---card-sage-bg:     #c8d8cc;
+--card-sage-bg:     #e2dace;
 --card-sage-border: #c7d4c5;
 --card-sage-accent: #6e8478;
 --card-sage-status: #5e7466;

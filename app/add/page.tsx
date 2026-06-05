@@ -122,30 +122,8 @@ export default function AddPage() {
         <span style={{ fontSize: '20px', color: 'var(--ink-faint)' }}>›</span>
       </a>
 
-      {/* ADD A PRODUCT — placeholder */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        backgroundColor: 'var(--paper-soft)',
-        borderRadius: '16px',
-        border: '1px solid var(--divider)',
-        padding: '20px',
-        opacity: 0.45,
-        marginBottom: '24px',
-        cursor: 'default',
-      }}>
-        <div>
-          <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '20px', color: 'var(--ink-faint)', margin: 0, fontWeight: 400 }}>Add a Product</p>
-          <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', color: 'var(--ink-faint)', margin: '4px 0 0' }}>
-            Coming soon — track products and get restock reminders.
-          </p>
-        </div>
-        <span style={{ fontSize: '20px', color: 'var(--ink-faint)' }}>›</span>
-      </div>
-
-      {/* BUILD CUSTOM */}
-      <div style={{ textAlign: 'center' }}>
+      {/* BUILD CUSTOM — above Add a Product so it stays reachable */}
+      <div style={{ textAlign: 'center', marginBottom: '20px' }}>
         <a
           href="/tasks/new"
           style={{
@@ -157,6 +135,27 @@ export default function AddPage() {
         >
           Build something custom
         </a>
+      </div>
+
+      {/* ADD A PRODUCT — placeholder (BetaB) */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: 'var(--paper-soft)',
+        borderRadius: '16px',
+        border: '1px solid var(--divider)',
+        padding: '20px',
+        opacity: 0.45,
+        cursor: 'default',
+      }}>
+        <div>
+          <p style={{ fontFamily: 'EB Garamond, Georgia, serif', fontSize: '20px', color: 'var(--ink-faint)', margin: 0, fontWeight: 400 }}>Add a Product</p>
+          <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', color: 'var(--ink-faint)', margin: '4px 0 0' }}>
+            Coming soon — track products and get restock reminders.
+          </p>
+        </div>
+        <span style={{ fontSize: '20px', color: 'var(--ink-faint)' }}>›</span>
       </div>
     </main>
   );
