@@ -54,9 +54,10 @@ Read this file completely before doing anything else in a new session.
 --plum:       #9D91B5;
 --mist:       #c8ddd6;   /* soft cool mint — Nails category */
 
-/* Defaults (keep --ink-faint #a8998e as the category-dot fallback) */
---category-default: #6B7280;  /* ONLY the null/unset routine case */
---routine-default:  #a6adc5;  /* routines.color DB default (retired #EC4899) */
+/* Color "defaults" — three distinct jobs (do NOT collapse into one name): */
+/* 1. Category-dot fallback (uncategorized) = --ink-faint #a8998e — use inkFaint, no separate token */
+--category-db-default: #6B7280;  /* 2. categories.color DB default value (NOT the dot fallback) */
+--routine-db-default:  #a6adc5;  /* 3. routines.color DB default value (retired #EC4899) */
 
 /* Soft-sage hero card family — NOT the saturated --sage */
 --card-sage-bg:     #d9e2d8;

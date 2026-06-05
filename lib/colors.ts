@@ -50,9 +50,11 @@ export const colors = {
   categoryHairRemoval: '#d4b870',
   categoryMakeup:      '#9D91B5',
   categoryWellness:    '#c4918a',
-  categoryDefault:     '#a8998e',   // uncategorized category-dot fallback (warm)
-  routineDefault:      '#a6adc5',   // routines.color DB default (retired #EC4899)
-  routineCategoryUnset:'#6B7280',   // null routines.category_id — "unset" display only
+  // Category-dot fallback (uncategorized) = inkFaint #a8998e — use that, not a
+  // separate token. The two DB-default tokens below document DB column defaults
+  // and must NOT be used as the dot fallback.
+  categoryDbDefault:   '#6B7280',   // categories.color DB default value
+  routineDbDefault:    '#a6adc5',   // routines.color DB default value (retired #EC4899)
 } as const;
 
 export type ColorName = keyof typeof colors;

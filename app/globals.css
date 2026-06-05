@@ -25,9 +25,9 @@
   --card-sage-status: #5e7466;   /* italic status line */
   --card-sage-sub:    #88958a;   /* sub-labels, dates */
 
-  /* Defaults (mirror mobile / live schema) */
-  --routine-default:        #a6adc5;   /* routines.color DB default (retired #EC4899) */
-  --routine-category-unset: #6B7280;   /* null routines.category_id — "unset" display only */
+  /* DB-default documentation tokens (NOT the dot fallback — that is --ink-faint #a8998e) */
+  --category-db-default: #6B7280;   /* categories.color DB default value */
+  --routine-db-default:  #a6adc5;   /* routines.color DB default value (retired #EC4899) */
 
   /* Legacy aliases (keep for backward compat while migrating) */
   --color-bg-base:        #f3ecd9;

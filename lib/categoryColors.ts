@@ -22,10 +22,10 @@ export const CATEGORY_COLORS: Record<string, {
 };
 
 export const DEFAULT_CATEGORY_COLOR = {
-  dot:    colors.categoryDefault,
-  border: colors.categoryDefault,
-  tintBg: tint(colors.categoryDefault, 0.10),
-  tint:   tint(colors.categoryDefault, 0.10),
+  dot:    colors.inkFaint,
+  border: colors.inkFaint,
+  tintBg: tint(colors.inkFaint, 0.10),
+  tint:   tint(colors.inkFaint, 0.10),
 };
 
 export function getCategoryColor(categoryName: string) {
