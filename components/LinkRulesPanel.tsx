@@ -115,10 +115,6 @@ export default function LinkRulesPanel({ routineId, userId, onRulesSaved }: Prop
             }
           }
 
-          // Determine primaryTaskId: 'a' or 'b' relative to this pair
-          const existingPrimaryId = existing?.primary_task_id ?? null;
-          const primaryTaskSide = existingPrimaryId === taskB.id ? 'b' : 'a';
-
           rules[key] = {
             pairId:            existing?.id ?? null,
             routineId,
@@ -126,9 +122,10 @@ export default function LinkRulesPanel({ routineId, userId, onRulesSaved }: Prop
             taskBId:           taskB.id,
             taskAName:         taskA.name,
             taskBName:         taskB.name,
-            linkType:          (existing?.link_type ?? 'conflict') as LinkType,
-            occurrenceInterval: existing?.occurrence_interval ?? 2,
-            primaryTaskId:     primaryTaskSide,
+            // every_n_occurrences moved to the cadence-coupling feature; coerce legacy rows
+            linkType:          (existing?.link_type === 'always_together' ? 'always_together' : 'conflict') as LinkType,
+            occurrenceInterval: 2,
+            primaryTaskId:     'a',
             defaultResolution: (existing?.default_resolution ?? 'ask') as ConflictResolution,
             defaultDelayDays:  existing?.default_delay_days ?? 7,
             delayTarget:       (existing?.delay_target      ?? 'b') as DelayTarget,
@@ -184,12 +181,8 @@ export default function LinkRulesPanel({ routineId, userId, onRulesSaved }: Prop
       user_id:            userId,
       task_a_id:          rule.taskAId,
       task_b_id:          rule.taskBId,
-      // Relationship type
+      // Relationship type (every_n_occurrences moved to cadence coupling)
       link_type:          rule.linkType,
-      occurrence_interval: rule.linkType === 'every_n_occurrences' ? rule.occurrenceInterval : null,
-      primary_task_id:    rule.linkType === 'every_n_occurrences'
-        ? (rule.primaryTaskId === 'b' ? rule.taskBId : rule.taskAId)
-        : null,
       // Overlap resolution (only relevant when link_type = 'conflict')
       default_resolution: rule.linkType === 'conflict' ? rule.defaultResolution : 'no_conflict',
       default_delay_days: rule.linkType === 'conflict' && rule.defaultResolution === 'auto_adjust' ? rule.defaultDelayDays   : null,
@@ -308,7 +301,6 @@ export default function LinkRulesPanel({ routineId, userId, onRulesSaved }: Prop
                       {([
                         { value: 'conflict',            label: 'Overlap rule' },
                         { value: 'always_together',     label: 'Always together' },
-                        { value: 'every_n_occurrences', label: 'Every N occurrences' },
                       ] as { value: LinkType; label: string }[]).map(opt => (
                         <button
                           key={opt.value}
@@ -335,28 +327,6 @@ export default function LinkRulesPanel({ routineId, userId, onRulesSaved }: Prop
                     </div>
                   )}
 
-                  {/* ── Every N Occurrences ── */}
-                  {rule.linkType === 'every_n_occurrences' && (
-                    <div className="pl-3 border-l-2 border-glow-border space-y-2.5">
-                      <div>
-                        <p className="text-xs text-warm-mid mb-1">Primary ritual (anchor)</p>
-                        <div className="flex gap-2">
-                          <button type="button" onClick={() => update(key, { primaryTaskId: 'a' })} className={chipClass(rule.primaryTaskId === 'a')}>{rule.taskAName}</button>
-                          <button type="button" onClick={() => update(key, { primaryTaskId: 'b' })} className={chipClass(rule.primaryTaskId === 'b')}>{rule.taskBName}</button>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-warm-mid">Paired ritual fires every</span>
-                        <input
-                          type="number" min={2} max={12}
-                          value={rule.occurrenceInterval}
-                          onChange={e => update(key, { occurrenceInterval: Math.max(2, Number(e.target.value)) })}
-                          className="w-14 text-center"
-                        />
-                        <span className="text-xs text-warm-mid">occurrences of {rule.primaryTaskId === 'b' ? rule.taskBName : rule.taskAName}</span>
-                      </div>
-                    </div>
-                  )}
 
                   {/* ── Overlap rule options (only when linkType = 'conflict') ── */}
                   {rule.linkType === 'conflict' && (

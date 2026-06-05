@@ -39,6 +39,7 @@
 
 import { addDays, format, parseISO, isAfter, isBefore } from 'date-fns';
 import { createClient } from '@/lib/supabase/client';
+import { followAnchorMove, promoteDependentsOnAnchorDelete } from '@/lib/cadenceCoupling';
 import type { Task, Instance, InstanceStatus } from '@/types';
 
 function isTwiceDaily(task: Pick<Task, 'frequency_type'>): boolean {
@@ -391,6 +392,8 @@ export async function createEventOverride(
     console.error('createEventOverride error:', error);
     return null;
   }
+  // every-N tether: any dependents tied to this anchor occurrence follow the move.
+  await followAnchorMove(instanceId, adjustedDate, adjustedDate);
   return data;
 }
 
@@ -430,6 +433,9 @@ export async function deleteInstance(
  * Hard-deletes a task and all its instances (including projected ones).
  */
 export async function deleteTask(taskId: string): Promise<boolean> {
+  // every-N: promote any dependents to standalone BEFORE the cascade drops their
+  // couplings (mandatory order — otherwise dependents are silently orphaned).
+  await promoteDependentsOnAnchorDelete(taskId);
   await db().from('instances').delete().eq('task_id', taskId);
   await db().from('task_products').delete().eq('task_id', taskId);
   const { error } = await db().from('tasks').delete().eq('id', taskId);

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import ClockPicker from '@/components/ClockPicker';
 import { format, parseISO, isBefore } from 'date-fns';
 import { createClient } from '@/lib/supabase/client';
+import { promoteDependentsOnAnchorDelete } from '@/lib/cadenceCoupling';
 import {
   createFirstInstance,
   generateCountdownInstances,
@@ -695,6 +696,8 @@ export default function TaskForm({
     if (!isEdit) return;
     setLoading(true);
     const supabase = createClient();
+    // every-N: promote any dependents to standalone BEFORE deleting this anchor.
+    await promoteDependentsOnAnchorDelete(taskId!);
     // Delete instances first, then the task itself.
     await supabase.from('instances').delete().eq('task_id', taskId);
     await supabase.from('tasks').delete().eq('id', taskId);

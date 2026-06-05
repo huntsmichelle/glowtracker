@@ -69,11 +69,9 @@ export interface RoutineTaskPair {
   proximity_first_task: 'a' | 'b' | null;
   proximity_resolution: ProximityResolution;
   // link_type is load-bearing (conflictDetection skips always_together pairs).
-  // occurrence_interval / primary_task_id are every-N-occurrences storage that
-  // will migrate to a dedicated table (feature spec B5); leave until then.
+  // every-N storage (occurrence_interval / primary_task_id) migrated to
+  // cadence_couplings and was dropped (migration 20260605_b5).
   link_type: LinkType;
-  occurrence_interval: number | null;
-  primary_task_id: string | null;
   created_at: string;
   // joined
   task_a?: Task;
@@ -249,10 +247,25 @@ export interface Instance {
   stub_date: string | null;
   // Set to true when marked kept automatically via autocomplete
   auto_completed: boolean;
+  // every-N cadence coupling: the SPECIFIC anchor occurrence this dependent
+  // instance follows. NULLABLE, TETHER-ONLY — never read by instance generation.
+  linked_anchor_instance_id: string | null;
   created_at: string;
   updated_at: string;
   // joined
   task?: Task;
+}
+
+// every-N-occurrences (cadence coupling): a dependent ritual occurs once every
+// N occurrences of an anchor ritual. Task-to-task; one anchor per dependent.
+export interface CadenceCoupling {
+  id: string;
+  user_id: string;
+  anchor_task_id: string;
+  dependent_task_id: string;
+  interval_n: number;
+  count_mode: 'all' | 'kept';
+  created_at: string;
 }
 
 export interface Product {

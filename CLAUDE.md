@@ -165,10 +165,23 @@ Hair Removal=Zap, Brows & Lashes=Eye, Wellness=Heart
 **`routine_task_pairs` extra columns:**
 - `link_type` — load-bearing (`conflictDetection` skips `always_together` pairs).
   KEEP.
-- `occurrence_interval` / `primary_task_id` — every-N-occurrences storage; will
-  MIGRATE to a dedicated table when that feature ships (spec B5), then drop.
-  Leave until then; don't build on them.
+- `occurrence_interval` / `primary_task_id` — every-N storage; MIGRATED to
+  `cadence_couplings` and dropped (migration `20260605_b5`). `LinkRulesPanel` no
+  longer offers the every-N option.
 - `occurrence_count` — dropped (migration `20260604`; was type-only, unused).
+
+**Cadence coupling (every-N-occurrences):** `cadence_couplings`
+(`anchor_task_id`, `dependent_task_id`, `interval_n`, `count_mode 'all'|'kept'`,
+`unique(dependent_task_id)`) + `instances.linked_anchor_instance_id` (nullable
+FK → `instances`, `ON DELETE SET NULL`). Logic in `lib/cadenceCoupling.ts`; UI is
+`components/CadenceCouplingPanel.tsx` on the ritual detail page. **GUARDRAIL:**
+`linked_anchor_instance_id` is TETHER-ONLY (date-follow pointer) — NO instance
+generation ever reads it to spawn/regenerate (that was the `generated_by_link_id`
+trap). Counting walks forward from the current tether (re-tether re-bases).
+Hooks: `followAnchorMove` (on anchor move), `promoteDependentsOnAnchorDelete`
+(before anchor-ritual delete — mandatory order), `onAnchorOccurrenceKept`
+('kept' mode reactive generation). every-N coupling and a spacing rule are
+mutually exclusive for a pair (validated at create).
 
 **Admin user ID:** `db24c2d7-e677-45af-add3-a155a87c75e0`
 

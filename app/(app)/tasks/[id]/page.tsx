@@ -6,6 +6,7 @@ import type { Task, Instance, Category } from '@/types';
 import { deriveStatus, today } from '@/lib/instanceEngine';
 import { getCategoryColor } from '@/lib/categoryColors';
 import StubPeriodPrompt from '@/components/StubPeriodPrompt';
+import CadenceCouplingPanel from '@/components/CadenceCouplingPanel';
 
 export const dynamic = 'force-dynamic';
 
@@ -114,6 +115,11 @@ export default async function TaskDetailPage({ params }: Props) {
           <p className="label-overline mb-2">Notes</p>
           <p className="text-sm text-charcoal whitespace-pre-wrap">{t.description}</p>
         </div>
+      )}
+
+      {/* Cadence coupling (every-N) — standard mode only */}
+      {t.mode !== 'countdown' && (
+        <CadenceCouplingPanel taskId={id} userId={user.id} />
       )}
 
       {/* Stub period prompt */}
