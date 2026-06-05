@@ -186,7 +186,8 @@ Sidebar nav:
 - Horizon → /horizon  
 - Library → /library (replaces separate Rituals + Routines)
 - Shelf → disabled placeholder (BetaA — products hidden)
-- Settings, Profile
+- Sign out (button, not a route)
+- Settings, Profile — (planned, not built; no `/settings` or `/profile` routes exist)
 
 Root route: logged-out → /home (marketing), logged-in → /today
 
@@ -212,7 +213,7 @@ Root route: logged-out → /home (marketing), logged-in → /today
 
 **/waitlist** — public waitlist form (no auth required)
 
-**/home** — marketing homepage (Homepage__2_.html)
+**/home** — marketing homepage (served from `brand/homepage.html` via `app/home/route.ts`)
 
 ---
 
