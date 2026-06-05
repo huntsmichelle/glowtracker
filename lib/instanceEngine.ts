@@ -609,8 +609,8 @@ async function createFirstTwiceDailyInstances(task: Task): Promise<Instance | nu
         status:            'upcoming' as InstanceStatus,
         is_projected:      false,
         slot:              'a',
-        time_of_day_label: task.slot_a_label ?? 'Morning',
-        scheduled_time:    task.slot_a_time  ?? null,
+        time_of_day_label: 'Morning',
+        scheduled_time:    task.scheduled_time ?? null,
       },
       {
         task_id:           task.id,
@@ -621,8 +621,8 @@ async function createFirstTwiceDailyInstances(task: Task): Promise<Instance | nu
         status:            'upcoming' as InstanceStatus,
         is_projected:      false,
         slot:              'b',
-        time_of_day_label: task.slot_b_label ?? 'Evening',
-        scheduled_time:    task.slot_b_time  ?? null,
+        time_of_day_label: 'Evening',
+        scheduled_time:    task.scheduled_time_pm ?? null,
       },
     ])
     .select();
@@ -661,8 +661,8 @@ async function generateTwiceDailyProjections(task: Task, anchorDate: Date): Prom
         status:            'projected' as InstanceStatus,
         is_projected:      true,
         slot:              'a',
-        time_of_day_label: task.slot_a_label ?? 'Morning',
-        scheduled_time:    task.slot_a_time  ?? null,
+        time_of_day_label: 'Morning',
+        scheduled_time:    task.scheduled_time ?? null,
       },
       {
         task_id:           task.id,
@@ -673,8 +673,8 @@ async function generateTwiceDailyProjections(task: Task, anchorDate: Date): Prom
         status:            'projected' as InstanceStatus,
         is_projected:      true,
         slot:              'b',
-        time_of_day_label: task.slot_b_label ?? 'Evening',
-        scheduled_time:    task.slot_b_time  ?? null,
+        time_of_day_label: 'Evening',
+        scheduled_time:    task.scheduled_time_pm ?? null,
       },
     );
   }

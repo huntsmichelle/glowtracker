@@ -68,11 +68,12 @@ export interface RoutineTaskPair {
   proximity_days: number | null;
   proximity_first_task: 'a' | 'b' | null;
   proximity_resolution: ProximityResolution;
-  // Linked task relationship type (extends beyond conflict detection)
+  // link_type is load-bearing (conflictDetection skips always_together pairs).
+  // occurrence_interval / primary_task_id are every-N-occurrences storage that
+  // will migrate to a dedicated table (feature spec B5); leave until then.
   link_type: LinkType;
   occurrence_interval: number | null;
   primary_task_id: string | null;
-  occurrence_count: number;
   created_at: string;
   // joined
   task_a?: Task;
@@ -181,12 +182,9 @@ export interface Task {
   reminder_notes: string | null;
   // Scheduling frequency (item 4)
   frequency_type: FrequencyType;
-  slot_a_label: string | null;   // twice_daily: label for slot A (default "Morning")
-  slot_a_time: string | null;    // HH:MM
-  slot_b_label: string | null;
-  slot_b_time: string | null;
-  // Time of day (item 3)
-  scheduled_time: string | null;       // HH:MM
+  // Time of day; twice-daily uses scheduled_time (AM) + scheduled_time_pm (PM)
+  scheduled_time: string | null;       // HH:MM (AM / single slot)
+  scheduled_time_pm: string | null;    // HH:MM (PM slot; twice-daily only)
   time_of_day_label: string | null;    // e.g. "After shower"
   // Routine membership (Phase 2)
   routine_id: string | null;
@@ -375,11 +373,9 @@ export interface TaskFormValues {
   intervalMin: number;
   intervalMax: number;
   intervalUnit: IntervalUnit;
-  // Twice-daily slots (item 4)
-  slotALabel: string;
-  slotATime: string;   // HH:MM or ''
-  slotBLabel: string;
-  slotBTime: string;   // HH:MM or ''
+  // Twice-daily slot times (labels are hardcoded Morning/Evening)
+  slotATime: string;   // HH:MM or '' (AM → scheduled_time)
+  slotBTime: string;   // HH:MM or '' (PM → scheduled_time_pm)
   // Time of day (item 3) — for interval/daily frequency
   scheduledTime: string;        // HH:MM or ''
   timeOfDayLabel: string;       // max 20 chars, '' = no label

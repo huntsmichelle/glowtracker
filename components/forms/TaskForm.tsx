@@ -241,9 +241,7 @@ export default function TaskForm({
   const [intervalUnit, setIntervalUnit] = useState<IntervalUnit>(
     initialValues?.intervalUnit ?? 'weeks'
   );
-  const [slotALabel, setSlotALabel] = useState(initialValues?.slotALabel ?? 'Morning');
   const [slotATime,  setSlotATime]  = useState(initialValues?.slotATime  ?? '');
-  const [slotBLabel, setSlotBLabel] = useState(initialValues?.slotBLabel ?? 'Evening');
   const [slotBTime,  setSlotBTime]  = useState(initialValues?.slotBTime  ?? '');
   const [scheduledTime,  setScheduledTime]  = useState(initialValues?.scheduledTime  ?? '');
   const [timeOfDayLabel, setTimeOfDayLabel] = useState(initialValues?.timeOfDayLabel ?? '');
@@ -598,10 +596,6 @@ export default function TaskForm({
       is_active:             true,
       mode,
       frequency_type:        mode === 'standard' ? frequencyType : 'interval',
-      slot_a_label:          isTwiceD ? (slotALabel.trim() || 'Morning') : null,
-      slot_a_time:           isTwiceD ? amTime : null,
-      slot_b_label:          isTwiceD ? (slotBLabel.trim() || 'Evening') : null,
-      slot_b_time:           isTwiceD ? pmTime : null,
       scheduled_time:        effectiveScheduledTime,
       scheduled_time_pm:     isTwiceD ? pmTime : null,
       time_of_day_label:     (frequencyType === 'interval' && showTimeOfDay && timeOfDayLabel.trim()) ? timeOfDayLabel.trim() : null,

@@ -61,11 +61,9 @@ export default async function EditTaskPage({ params }: Props) {
     intervalMin:           t.interval_min_days,
     intervalMax:           t.interval_max_days,
     intervalUnit:          'days',
-    slotALabel:            t.slot_a_label ?? '',
-    // PM slot mirrors mobile's scheduled_time_pm; fall back to slot_a/b_time
-    slotATime:             t.slot_a_time ?? (t.frequency_type === 'twice_daily' ? (t.scheduled_time ?? '') : ''),
-    slotBLabel:            t.slot_b_label ?? '',
-    slotBTime:             t.slot_b_time ?? ((t as { scheduled_time_pm?: string | null }).scheduled_time_pm ?? ''),
+    // Twice-daily times live in scheduled_time (AM) + scheduled_time_pm (PM)
+    slotATime:             t.frequency_type === 'twice_daily' ? (t.scheduled_time ?? '') : '',
+    slotBTime:             t.scheduled_time_pm ?? '',
     scheduledTime:         t.scheduled_time ?? '',
     timeOfDayLabel:        t.time_of_day_label ?? '',
     default_reminder_days: t.default_reminder_days,

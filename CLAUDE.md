@@ -138,28 +138,37 @@ Hair Removal=Zap, Brows & Lashes=Eye, Wellness=Heart
 **Reminder storage (shared schema; web mirrors mobile):**
 - `scheduled_time` (TIME) = AM / single slot
 - `scheduled_time_pm` (TIME, nullable) = PM slot (null unless twice-daily)
-- `reminder_hours` (int, nullable) = hours-before offset (0 = at the slot)
-- `default_reminder_days` (int, CHECK 0–14) = day-based offset, STILL LIVE
-- Web reminder form (commit `3a2fb03`) writes these. **Tech debt:** web's
-  instanceEngine schedules twice-daily off `slot_a_time`/`slot_b_time`, kept in
-  sync with `scheduled_time`/`scheduled_time_pm`. Canonical = `scheduled_time`/
-  `_pm`; the slot columns should consolidate onto them later. Don't let them
-  diverge.
+- `reminder_hours` (int, nullable) = hours-before offset (0 = at the slot) —
+  daily / twice-daily reminders
+- `default_reminder_days` (int, CHECK 0–14) = day-based offset — KEEP
+- `reminder_value` / `reminder_unit` (NOT NULL) = the source for INTERVAL-cadence
+  reminders (days/weeks), distinct from `reminder_hours` — KEEP (web reads+writes
+  them; not vestigial)
+- Twice-daily times are CANONICAL on `scheduled_time` (AM) / `scheduled_time_pm`
+  (PM); the generator reads those directly and hardcodes "Morning"/"Evening"
+  labels. The old `slot_a_time`/`slot_b_time`/`slot_a_label`/`slot_b_label`
+  columns were dropped (migration `20260604`). Do not reintroduce them.
 
 **Architecture — instance generation is CLIENT-SIDE:**
 - No server-side generator (public schema has only `handle_new_user` +
   `update_updated_at`). Generation / conflict-resolution / reflow live in app
   code — keep consistent across BOTH repos.
-- Override/scheduling columns exist (`override_next_date`,
-  `original_scheduled_date`, `calendar_event_date`, `snooze_until`, `stub_date`,
-  `is_stub_instance`); writers not fully traced — document before relying.
+- Override/scheduling columns — KEEP all six:
+  - `override_next_date` — next-instance anchor override (read by the engine)
+  - `calendar_event_date` — completion date stamped for calendar/heat display
+  - `snooze_until` — date a deferred instance resurfaces
+  - `is_stub_instance` — flag: added one-off stub, not part of the cadence
+  - `original_scheduled_date` — intentional WRITE-ONLY audit copy of the pre-skip
+    start date (not debt)
+  - `stub_date` — intentional WRITE-ONLY record of a stub's chosen date (not debt)
 
-**Vestigial / unverified (leave; flagged):**
-- `reminder_value` / `reminder_unit`: present, NOT NULL, mobile-unused — confirm
-  web use before any drop.
-- `routine_task_pairs` columns `link_type`, `occurrence_interval`,
-  `primary_task_id`, `occurrence_count`: vestigial-looking, unverified — don't
-  build on them without checking.
+**`routine_task_pairs` extra columns:**
+- `link_type` — load-bearing (`conflictDetection` skips `always_together` pairs).
+  KEEP.
+- `occurrence_interval` / `primary_task_id` — every-N-occurrences storage; will
+  MIGRATE to a dedicated table when that feature ships (spec B5), then drop.
+  Leave until then; don't build on them.
+- `occurrence_count` — dropped (migration `20260604`; was type-only, unused).
 
 **Admin user ID:** `db24c2d7-e677-45af-add3-a155a87c75e0`
 
@@ -297,9 +306,10 @@ completed/skipped never change.** Event data is currently scattered
 11. Conflict system = `routine_task_pairs` / `routine_conflicts`. The
     `linked_tasks` family is DROPPED — never reference it.
 12. Routine category is `category_id` (FK); the text column is gone. Null = unset.
-13. Reminder hours = `reminder_hours`; day-based = `default_reminder_days`.
-    Canonical slot columns = `scheduled_time` / `scheduled_time_pm`
-    (`slot_a`/`slot_b` is bridged tech debt to consolidate later).
+13. Reminder hours = `reminder_hours` (daily/twice-daily); day-based =
+    `default_reminder_days`; interval-cadence = `reminder_value`/`reminder_unit`.
+    Twice-daily times are canonical on `scheduled_time`/`scheduled_time_pm` —
+    `slot_a`/`slot_b` columns were dropped; never reintroduce them.
 14. Instance generation is client-side; keep logic consistent across both repos.
 
 ---
