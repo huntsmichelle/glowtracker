@@ -53,7 +53,20 @@ Read this file completely before doing anything else in a new session.
 --marigold:   #d4b870;
 --plum:       #9D91B5;
 --mist:       #c8ddd6;   /* soft cool mint — Nails category */
+
+/* Defaults (keep --ink-faint #a8998e as the category-dot fallback) */
+--category-default: #6B7280;  /* ONLY the null/unset routine case */
+--routine-default:  #a6adc5;  /* routines.color DB default (retired #EC4899) */
+
+/* Soft-sage hero card family — NOT the saturated --sage */
+--card-sage-bg:     #d9e2d8;
+--card-sage-border: #c7d4c5;
+--card-sage-accent: #6e8478;
+--card-sage-status: #5e7466;
+--card-sage-sub:    #88958a;
 ```
+
+Tokens live in `lib/colors.ts` (TS) and `styles`/`app/globals.css` (CSS) — keep both in sync.
 
 No red anywhere — use `--refresh` for alerts.
 No pure black — use `--ink`.
@@ -104,9 +117,48 @@ Hair Removal=Zap, Brows & Lashes=Eye, Wellness=Heart
 5. Include `.eq('user_id', userId)` explicitly
 
 **Key tables:**
-`tasks`, `instances`, `routines`, `routine_task_pairs`, `categories`,
-`profiles`, `products`, `task_products`, `common_tasks`, `template_task_rules`,
-`service_providers`
+`tasks`, `instances`, `routines`, `routine_task_pairs`, `routine_conflicts`,
+`categories`, `profiles`, `products`, `task_products`, `common_tasks`,
+`template_task_rules`, `service_providers`
+
+> DROPPED this session: `linked_tasks`, `link_resolution_rules`,
+> `instances.generated_by_link_id` (+ its index/FK). `lib/linkedTaskEngine.ts`
+> was dead code and was deleted. Never reference any of these — they no longer
+> exist. See Conflict System.
+
+**Routines:**
+- `routines.category` (TEXT) was DROPPED → `routines.category_id` (uuid FK →
+  `categories`). Read/write via `category_id` (join `categories` for name/color).
+  6 event-prep routines have `category_id = NULL` by design (old text "Event"
+  was never a category) — render null as "unset", never an error.
+- `routines.color` DB default is now `#a6adc5` (#EC4899 fully retired — zero
+  references should remain in web code).
+
+**Reminder storage (shared schema; web mirrors mobile):**
+- `scheduled_time` (TIME) = AM / single slot
+- `scheduled_time_pm` (TIME, nullable) = PM slot (null unless twice-daily)
+- `reminder_hours` (int, nullable) = hours-before offset (0 = at the slot)
+- `default_reminder_days` (int, CHECK 0–14) = day-based offset, STILL LIVE
+- Web reminder form (commit `3a2fb03`) writes these. **Tech debt:** web's
+  instanceEngine schedules twice-daily off `slot_a_time`/`slot_b_time`, kept in
+  sync with `scheduled_time`/`scheduled_time_pm`. Canonical = `scheduled_time`/
+  `_pm`; the slot columns should consolidate onto them later. Don't let them
+  diverge.
+
+**Architecture — instance generation is CLIENT-SIDE:**
+- No server-side generator (public schema has only `handle_new_user` +
+  `update_updated_at`). Generation / conflict-resolution / reflow live in app
+  code — keep consistent across BOTH repos.
+- Override/scheduling columns exist (`override_next_date`,
+  `original_scheduled_date`, `calendar_event_date`, `snooze_until`, `stub_date`,
+  `is_stub_instance`); writers not fully traced — document before relying.
+
+**Vestigial / unverified (leave; flagged):**
+- `reminder_value` / `reminder_unit`: present, NOT NULL, mobile-unused — confirm
+  web use before any drop.
+- `routine_task_pairs` columns `link_type`, `occurrence_interval`,
+  `primary_task_id`, `occurrence_count`: vestigial-looking, unverified — don't
+  build on them without checking.
 
 **Admin user ID:** `db24c2d7-e677-45af-add3-a155a87c75e0`
 
@@ -143,7 +195,7 @@ Root route: logged-out → /home (marketing), logged-in → /today
 
 **/today** — 4-column layout:
 - Col 1: Nav
-- Col 2: In Sequence card (rolling 7-day stats: COMPLETED/READY/PAST WINDOW) + ritual list + "Next: xxx" when empty
+- Col 2: In Sequence hero card (soft-sage wash, `--card-sage-*`): "Today" kicker + "In sequence" title, rolling 7-day stats KEPT/ACTIVE/ATTENTION (Inter 300 numbers), italic status line, "Next" block (soonest upcoming), then the ritual list
 - Col 3: Horizon summary card + Rhythm card (heat strip, not calendar) + Shelf alert (conditional)
 - Col 4: Insights footer
 
@@ -165,12 +217,25 @@ Root route: logged-out → /home (marketing), logged-in → /today
 
 ## Conflict System
 
-Resolution types: `no_conflict` | `ask` | `auto_adjust` | `skip_one` | `replace` | `always_together`
+**KEEP tables:** `routine_task_pairs` (rule definitions) + `routine_conflicts`
+(detected runtime conflicts). `routine_task_pairs` uses `task_a_id`/`task_b_id`
+(NOT `task_id`); tasks link to routines via `tasks.routine_id` directly.
 
-**replace** (new): anchor task always wins, subordinate auto-skipped, both cadences continue independently.
+- **`rule_type`** (KIND): `keep_apart` | `replace` | `always_together`
+- **`default_resolution`** (ACTION): `no_conflict` | `ask` | `auto_adjust` | `skip_one`
+- **`anchor_common_task_id`** required when `rule_type = 'replace'` — the anchor
+  wins, the subordinate instance is auto-skipped, both cadences continue.
 
-`routine_task_pairs` uses `task_a_id` and `task_b_id` — NOT `task_id`.
-Tasks link to routines via `tasks.routine_id` column directly.
+**Live within-routine logic:** `lib/conflictDetection.ts` +
+`components/LinkRulesPanel.tsx` operate on `routine_task_pairs`. KEEP these. The
+web detail page hosts `LinkRulesPanel` at `/routines/[id]/conflicts`.
+
+**Cross-ritual on-add detection scan = SPEC ONLY, not built** (needs a catalog
+keyed on `common_task_id`). See `docs/conflict-catalog-spec.md`.
+
+**DROPPED this session:** `linked_tasks`, `link_resolution_rules`,
+`instances.generated_by_link_id` (+ index/FK). `lib/linkedTaskEngine.ts` was
+dead code and was DELETED. Never reference these — they no longer exist.
 
 ---
 
@@ -179,6 +244,39 @@ Tasks link to routines via `tasks.routine_id` column directly.
 System templates: `routines.is_system_template = TRUE`, owned by admin user.
 Current templates: Hair Color Maintenance, Bridal Beauty Prep (26 tasks).
 `template_task_rules` table: filters tasks by timing for event-prep templates.
+
+---
+
+## Routine Detail / Edit Page (web)
+
+`/routines/[id]` — detail page (links OUT to the ritual edit form; no inline
+ritual editing):
+- **Header:** name, ritual count, "Next: <ritual>, <date>", "Active since
+  <month year>".
+- **Timeline:** "Next 90 days" preview.
+- **Rituals list** (the heart): each ritual → existing ritual edit form
+  (`/tasks/[id]/edit`). Web routes ritual → detail → edit, kept intentionally
+  for within-web consistency. "+ Add Ritual" button.
+- **Settings:** Category EDITABLE via `category_id` picker (writes
+  `routines.category_id`; null = "unset"); Routine Type read-only
+  (`routines.routine_type`); Start point display-only (derived from
+  `tasks.initial_anchor_date`: manual date vs first-ritual completion); Event
+  target HELD (display-only for event-prep).
+- **Conflicts:** summary card ("N rules configured" → Manage) →
+  `/routines/[id]/conflicts` (hosts `LinkRulesPanel`).
+- **NO automation section** — passive tracking is a ritual-level setting on the
+  ritual form.
+
+---
+
+## Events (planned, not built)
+
+Events (weddings/vacations) are being redesigned as FIRST-CLASS objects +
+blackout logic (suspend/move instances in a window). Separate spec. Event-target
+date editing + reflow are HELD. Reflow rule when built: **future instances only;
+completed/skipped never change.** Event data is currently scattered
+(`tasks.target_date`/`target_label`, `instances.event_date`/`event_name`,
+`profiles.onboarding_event_date`).
 
 ---
 
@@ -194,6 +292,13 @@ Current templates: Hair Color Maintenance, Bridal Beauty Prep (26 tasks).
 8. RLS on every new table using `(SELECT auth.uid())` pattern
 9. No red — use `--refresh` terracotta for alerts
 10. All changes run in parallel on web and mobile
+11. Conflict system = `routine_task_pairs` / `routine_conflicts`. The
+    `linked_tasks` family is DROPPED — never reference it.
+12. Routine category is `category_id` (FK); the text column is gone. Null = unset.
+13. Reminder hours = `reminder_hours`; day-based = `default_reminder_days`.
+    Canonical slot columns = `scheduled_time` / `scheduled_time_pm`
+    (`slot_a`/`slot_b` is bridged tech debt to consolidate later).
+14. Instance generation is client-side; keep logic consistent across both repos.
 
 ---
 
@@ -204,18 +309,22 @@ Current templates: Hair Color Maintenance, Bridal Beauty Prep (26 tasks).
 | 1–3 | ✅ Core engine, routines, security |
 | 4 | ✅ Product tracking (web, hidden mobile) |
 | 5a | ✅ Onboarding flow |
-| 6 / 6C | 🔄 Mobile app, Play Store, creation flow overhaul |
-| 7 | Planned: Notifications |
+| 6 / 6C | ✅ Mobile app, Play Store, creation flow overhaul |
+| 7 | ✅ Notifications (mobile) |
 | 8 | Planned: Insights + reporting |
 | 9 | Planned: Google Calendar integration |
 
 ---
 
-## Current Status (as of v6C.1)
+## Current Status (v7.4 + schema cleanup complete)
 
-- Web and mobile running in parallel
-- Mobile: versionCode 13, OTA updates via expo-updates (branch: production)
-- Play Store: Internal testing track live
-- Waitlist: tendtooapp.com/waitlist → Google Sheets
-- Marketing homepage: tendtooapp.com
-- v6C.1 cleanup in progress: save ritual fix, data query fixes, Me screen, Today fixes
+- Web + mobile in parallel; web deploys on git push (Vercel)
+- Mobile: versionCode 14, runtime 1.1.0, Play internal testing; Phase 7
+  notifications shipped (mobile)
+- Web parity: hero card (soft-sage), reminder form, `category_id` FK, color
+  tokens done; routine detail page parity in progress (header / category-edit /
+  conflicts-page focused push)
+- Schema cleanup complete: `routines.category_id` FK (text dropped), color
+  default `#a6adc5`, `linked_tasks` family dropped, conflict system consolidated
+  on `routine_task_pairs` / `routine_conflicts`
+- Waitlist + marketing homepage live
