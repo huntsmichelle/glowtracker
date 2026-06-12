@@ -125,11 +125,21 @@
       line-height: 1.45;
       color: var(--ink);
       max-width: 560px;
-      margin-bottom: 48px;
+      margin-bottom: 14px;
       text-wrap: pretty;
       letter-spacing: -0.01em;
     }
     .hero-desc em { font-style: italic; color: var(--mid); }
+    .hero-subdesc {
+      font-family: 'Inter', sans-serif;
+      font-size: clamp(13px, 1.1vw, 16px);
+      font-weight: 400;
+      font-style: normal;
+      line-height: 1.5;
+      color: var(--green);
+      white-space: nowrap;
+      margin-bottom: 48px;
+    }
     .hero-launch {
       display: inline-flex;
       align-items: center;
@@ -470,6 +480,7 @@
   <p class="hero-tagline">Because you're also on the list.</p>
   <div class="hero-rule"></div>
   <p class="hero-desc">Life has maintenance requirements.<br><em>You deserve to be included in them.</em></p>
+  <p class="hero-subdesc">Recurring care &amp; event prep, without carrying it all in your head.</p>
   <div style="display:flex;flex-direction:column;align-items:center;gap:14px;">
     <a class="hero-launch" href="/waitlist">Get early access</a>
     <button class="show-me-link" onclick="openVideoModal()">Show me how it works</button>
