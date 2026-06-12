@@ -337,14 +337,15 @@ function Stage({
   fps = 60,
   loop = true,
   autoplay = true,
+  startAt = 0,
   persistKey = 'animstage',
   children,
 }) {
   const [time, setTime] = React.useState(() => {
     try {
-      const v = parseFloat(localStorage.getItem(persistKey + ':t') || '0');
-      return isFinite(v) ? clamp(v, 0, duration) : 0;
-    } catch { return 0; }
+      const v = parseFloat(localStorage.getItem(persistKey + ':t') || String(startAt));
+      return isFinite(v) ? clamp(v, startAt, duration) : startAt;
+    } catch { return startAt; }
   });
   const [playing, setPlaying] = React.useState(autoplay);
   const [hoverTime, setHoverTime] = React.useState(null);
@@ -395,7 +396,8 @@ function Stage({
       setTime((t) => {
         let next = t + dt;
         if (next >= duration) {
-          if (loop) next = next % duration;
+          // Loop wraps into [startAt, duration) so any pre-roll intro is dropped permanently.
+          if (loop) next = startAt + ((next - startAt) % (duration - startAt));
           else { next = duration; setPlaying(false); }
         }
         return next;
@@ -407,7 +409,7 @@ function Stage({
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       lastTsRef.current = null;
     };
-  }, [playing, duration, loop]);
+  }, [playing, duration, loop, startAt]);
 
   // Keyboard: space = play/pause, ← → = seek
   React.useEffect(() => {
