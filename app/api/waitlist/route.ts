@@ -24,10 +24,17 @@ export async function POST(req: NextRequest) {
       firstName,
       email,
       managing,
+      platform,
       interestedInBeta,
       updates,
       source,
     } = body;
+
+    // Readable platform label for the sheet (form sends ios/android/unsure).
+    const platformLabel =
+      platform === 'ios'     ? 'iPhone'   :
+      platform === 'android' ? 'Android'  :
+      platform === 'unsure'  ? 'Not sure' : (platform || '');
 
     if (!firstName?.trim() || !email?.trim()) {
       return NextResponse.json(
@@ -47,10 +54,11 @@ export async function POST(req: NextRequest) {
     const sheets = await getSheet();
     const timestamp = new Date().toISOString();
 
-    // Columns: Timestamp | First Name | Email | Managing | Beta Interest | Updates | Source
+    // Columns: Timestamp | First Name | Email | Managing | Beta Interest | Updates | Source | Platform
+    // Platform is appended as a NEW trailing column (H) so existing rows/columns stay aligned.
     await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${SHEET_NAME}!A:G`,
+      range: `${SHEET_NAME}!A:H`,
       valueInputOption: 'USER_ENTERED',
       requestBody: {
         values: [[
@@ -61,6 +69,7 @@ export async function POST(req: NextRequest) {
           interestedInBeta ? 'Yes' : 'No',
           updates ? 'Yes' : 'No',
           source || 'direct',
+          platformLabel,
         ]],
       },
     });
@@ -80,6 +89,7 @@ New signup:
 Name: ${firstName}
 Email: ${email}
 Managing: ${Array.isArray(managing) ? managing.join(', ') : managing}
+Phone: ${platformLabel}
 Beta interest: ${interestedInBeta ? 'Yes' : 'No'}
 Updates: ${updates ? 'Yes' : 'No'}
 Source: ${source || 'direct'}

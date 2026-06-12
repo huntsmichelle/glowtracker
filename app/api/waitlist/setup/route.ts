@@ -14,7 +14,7 @@ export async function GET() {
 
   await sheets.spreadsheets.values.update({
     spreadsheetId: '1ewBQksRTQXm6UMF6jvdHlFVEAFxSz7SPawGrL4qFsjY',
-    range: 'Sheet1!A1:G1',
+    range: 'Sheet1!A1:H1',
     valueInputOption: 'USER_ENTERED',
     requestBody: {
       values: [[
@@ -25,6 +25,7 @@ export async function GET() {
         'Beta Interest',
         'Updates',
         'Source',
+        'Platform',
       ]],
     },
   });

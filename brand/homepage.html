@@ -400,6 +400,16 @@
       color: var(--muted);
       letter-spacing: 0.05em;
     }
+    .footer-right { display: flex; align-items: center; gap: 18px; }
+    .footer-link {
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.05em;
+      text-decoration: none;
+      transition: color 0.15s ease;
+    }
+    .footer-link:hover { color: var(--ink); }
 
     /* ── Reveal ─────────────────────────────────────── */
     .reveal {
@@ -577,7 +587,10 @@
 <!-- ── Footer ────────────────────────────────────────── -->
 <footer>
   <span class="tt-wordmark footer-wordmark">tend<span class="tt-comma">,</span><span class="tt-too">too</span></span>
-  <span class="footer-note">© 2026 tend, too</span>
+  <span class="footer-right">
+    <a class="footer-link" href="/privacy">Privacy</a>
+    <span class="footer-note">© 2026 tend, too</span>
+  </span>
 </footer>
 
 <script>

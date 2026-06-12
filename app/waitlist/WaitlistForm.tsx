@@ -12,6 +12,12 @@ const MANAGING_OPTIONS = [
   { value: 'multiple',   label: 'Multiple / all of the above' },
 ];
 
+const PLATFORM_OPTIONS = [
+  { value: 'ios',     label: 'iPhone' },
+  { value: 'android', label: 'Android' },
+  { value: 'unsure',  label: 'Not sure' },
+];
+
 function WaitlistFormInner() {
   const searchParams = useSearchParams();
   const source = searchParams.get('source') ?? 'direct';
@@ -19,6 +25,7 @@ function WaitlistFormInner() {
   const [firstName, setFirstName] = useState('');
   const [email, setEmail]         = useState('');
   const [managing, setManaging]   = useState<string[]>([]);
+  const [platform, setPlatform]   = useState('');
   const [interestedInBeta, setInterestedInBeta] = useState(false);
   const [updates, setUpdates]     = useState(false);
   const [status, setStatus]       = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
@@ -32,8 +39,8 @@ function WaitlistFormInner() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!firstName.trim() || !email.trim() || managing.length === 0) {
-      setErrorMsg('Please fill in all required fields and select at least one category.');
+    if (!firstName.trim() || !email.trim() || managing.length === 0 || !platform) {
+      setErrorMsg('Please fill in all required fields, select at least one category, and choose your phone.');
       return;
     }
 
@@ -44,7 +51,7 @@ function WaitlistFormInner() {
       const res = await fetch('/api/waitlist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ firstName, email, managing, interestedInBeta, updates, source }),
+        body: JSON.stringify({ firstName, email, managing, platform, interestedInBeta, updates, source }),
       });
 
       const data = await res.json();
@@ -127,6 +134,39 @@ function WaitlistFormInner() {
                 key={opt.value}
                 type="button"
                 onClick={() => toggleManaging(opt.value)}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '100px',
+                  border: `1px solid ${selected ? '#6e8c82' : '#ddd4c4'}`,
+                  backgroundColor: selected ? 'rgba(110,140,130,0.12)' : 'transparent',
+                  color: selected ? '#6e8c82' : '#6b5c52',
+                  fontFamily: 'Inter, sans-serif',
+                  fontSize: '13px',
+                  fontWeight: selected ? 500 : 400,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Platform */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <label style={labelStyle}>
+          Which phone do you use? <span style={{ color: '#c08a6e' }}>*</span>
+        </label>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+          {PLATFORM_OPTIONS.map(opt => {
+            const selected = platform === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setPlatform(opt.value)}
                 style={{
                   padding: '6px 14px',
                   borderRadius: '100px',
